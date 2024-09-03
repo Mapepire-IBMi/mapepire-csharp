@@ -3,7 +3,7 @@ This project will provide a .NET WebSocket client class for the IBM i Mapepire W
 
 There will most likely be a version of the C# class that closely mirrors 
 
-The initial prototype version of a C# Mapiepire WebSocket Client class was created by Richard Schoen - MobiGoGo LLC and is named: ```MobiMapepreClient``` in file ```MobiMapepire.cs```. The class can be included in any current .net version project. It has only been tested with .Net 8.0 so far, not the .Net Framework. 
+The initial prototype version of a C# Mapiepire WebSocket Client class was created by Richard Schoen - MobiGoGo LLC and is named: ```MobiMapepireClient``` in file ```MobiMapepire.cs```. The class can be included in any current .net version project. It has only been tested with .Net 8.0 so far, not the .Net Framework. 
 
 
 
