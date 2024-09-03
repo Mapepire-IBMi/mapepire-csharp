@@ -26,11 +26,11 @@ Currently there is an issue with .NET Client WebSockets, Windows 10 and SSL/TLS 
 - It's currently unknown as to whether the .NET ClientWebSocket will work with .Net 8 on Linux. (This OS will probably need to be tested at some point.)   
 
 
-# Starting up mapepire server with SSL TLS 1.3 for testing   
-Start up the mapepire server without SSL via the following command:   
+# Starting up Mapepire server with SSL TLS 1.3 for testing   
+Start up the Mapepire server without SSL via the following command:   
 ```/QOpenSys/pkgs/bin/mapepire```
 
-# Submit start up for mapepire server with SSL TLS 1.3 via QSHBASH   
+# Submit start up for Mapepire server with SSL TLS 1.3 via QSHBASH   
 ```
 SBMJOB CMD(QSHONI/QSHBASH CMDLINE('/QOpenSys/pkgs/bin/mapepire') 
 SETPKGPATH(*YES) PRTSTDOUT(*YES) PRTSPLF(STRMAPEPIR)
@@ -38,11 +38,11 @@ PASEJOBNAM(MAPEPIRETH)) JOB(STRMAPEPIR) JOBQ(QUSRNOMAX) USER(&USERID)
 JOBMSGQFL(*WRAP) ALWMLTTHD(*YES)            
 ```
 
-# Starting up mapepire server without SSL for testing   
-Start up the mapepire server without SSL via the following command:   
+# Starting up Mapepire server without SSL for testing   
+Start up the Mapepire server without SSL via the following command:   
 ```MP_UNSECURE=true /QOpenSys/pkgs/bin/mapepire```
 
-# Submit start up for mapepire server without SSL via QSHBASH   
+# Submit start up for Mapepire server without SSL via QSHBASH   
 ```
 SBMJOB CMD(QSHONI/QSHBASH CMDLINE('MP_UNSECURE=true /QOpenSys/pkgs/bin/mapepire') 
 SETPKGPATH(*YES) PRTSTDOUT(*YES) PRTSPLF(STRMAPEPIR)
