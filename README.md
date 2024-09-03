@@ -1,14 +1,20 @@
 # Mapepire client SDK for C#
-This class is a .NET WebSocket client class for the IBM i Mapepire WebSocket Data Server component.    
+This project will provide a .NET WebSocket client class for the IBM i Mapepire WebSocket Data Server component.    
 
-The Mapepire server supports TLS1.3 by default so this class will only work on Windows 11 or other platforms that support TLS1.3 natively unless you disable SSL.  
+There will most likely be a version of the C# class that closely mirrors 
+
+The initial prototype version of a C# Mapiepire WebSocket Client class was created by Richard Schoen - MobiGoGo LLC and is named: ```MobiMapepreClient``` in file ```MobiMapepire.cs```. The class can be included in any current .net version project. It has only been tested with .Net 8.0 so far, not the .Net Framework. 
+
+
 
 ❗ Disabling SSL is not advised. 
 
 Learn more about the IBM i Mapepire Server component here:   
 https://github.com/Mapepire-IBMi
 
-❗ Note: Currently there is an issue with DotNet WebSockets, SSL and Windows 10 and TLS 1.3. 
+❗ Note: Currently there is an issue with DotNet WebSockets, SSL and Windows 10 and TLS 1.3. The Mapepire server supports TLS1.3 by default so this .NET class will only work on Windows 11 or other platforms that support TLS1.3 natively unless you disable SSL.  
+
+# SSL/TLS Scenarios
 - On Windows 11 the class is now fully usable with or without valid certificates and TLS1.3
 - On Windows 10 the class is only usable if SSL/TLS is disabled.
 
@@ -36,7 +42,7 @@ PASEJOBNAM(MAPEPIRETH)) JOB(STRMAPEPIR) JOBQ(QUSRNOMAX) USER(&USERID)
 JOBMSGQFL(*WRAP) ALWMLTTHD(*YES)            
 ```
 
-# Sample C# test sequence   
+# Sample C# test sequence using the prototypr MobiMapepireClient.cs class
 This is a very simple sample connect and query sequence.   
 
 Copy the following statements into a Dotnet C# Console project. 
@@ -50,8 +56,8 @@ string pass = "pass1";
 bool allowinvalidcerts = false; // Set to true to allow invalid TLS1.3 certs on Windows 11.
                                 // Windows 10 and below does not natively support TLS1.3
 
-// Instantiate Mapepire Client class
-var client = new MapepireClient.Client();
+// Instantiate MobiMapepire Client class
+var client = new MobiMapepireClient.Client();
 
 // Connect to WebSocket server
 var taskWebConnect = Task.Run(() => client.Connect(host,user,pass,port,secure));
