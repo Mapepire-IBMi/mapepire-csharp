@@ -25,21 +25,22 @@ jobs:
     - name: Create staging directory
       run: mkdir -p ./staging
     - name: Build
-      run: dotnet build --artifacts-path ./staging --no-restore
+      run: dotnet build --output ./staging --no-restore
     - name: Test
-      run: dotnet test --artifacts-path ./staging --no-build --verbosity normal
+      run: dotnet test --output ./staging --no-build --verbosity normal
     - name: list .exe artifacts
-      run: find . -name \*.exe
+      run: find staging -name \*.exe
     - name: list .dll artifacts
-      run: find . -name \*.dll
-    - name: Create distribution .zip
+      run: find staging -name \*.dll
+    - name: Grab distribution files
       working-directory: staging
-      run: zip -r dist.zip *
-
+      run: |
+       mkdir -p ../dist
+       mv *.dll *.exe *.pdb ../dist/
     - name: Upload dist artifact
       uses: actions/upload-artifact@v4
       id: artifact-upload
       with:
         name: dist.zip
-        path: staging
+        path: dist
         if-no-files-found: error
