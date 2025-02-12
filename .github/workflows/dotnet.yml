@@ -36,7 +36,7 @@ jobs:
       working-directory: staging
       run: |
        mkdir -p ../dist
-       mv *.dll *.exe *.pdb ../dist/
+       mv *.dll *.pdb ../dist/
     - name: Upload dist artifact
       uses: actions/upload-artifact@v4
       id: artifact-upload
