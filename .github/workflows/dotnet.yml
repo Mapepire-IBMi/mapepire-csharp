@@ -19,10 +19,27 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 8.0.x
+        dotnet-version: 9.0.x
     - name: Restore dependencies
       run: dotnet restore
+    - name: Create staging directory
+      run: mkdir -p ./staging
     - name: Build
-      run: dotnet build --no-restore
+      run: dotnet build --artifacts-path ./staging --no-restore
     - name: Test
-      run: dotnet test --no-build --verbosity normal
+      run: dotnet test --artifacts-path ./staging --no-build --verbosity normal
+    - name: list .exe artifacts
+      run: find . -name \*.exe
+    - name: list .dll artifacts
+      run: find . -name \*.dll
+    - name: Create distribution .zip
+      working-directory: staging
+      run: zip -r dist.zip *
+
+    - name: Upload dist artifact
+      uses: actions/upload-artifact@v4
+      id: artifact-upload
+      with:
+        name: dist.zip
+        path: staging
+        if-no-files-found: error
