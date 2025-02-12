@@ -7,37 +7,37 @@ public class ColumnMetadata {
      * The display size of the column.
      */
     [JsonPropertyName("display_size")]
-    private int DisplaySize { get; set; }
+    public int DisplaySize { get; set; }
 
     /**
      * The label of the column.
      */
     [JsonPropertyName("label")]
-    private String? Label { get; set; }
+    public String? Label { get; set; }
 
     /**
      * The name of the column.
      */
     [JsonPropertyName("name")]
-    private String? Name { get; set; }
+    public String? Name { get; set; }
 
     /**
      * The type of the column.
      */
     [JsonPropertyName("type")]
-    private String? Type { get; set; }
+    public String? Type { get; set; }
 
     /**
      * The precision/length of the column.
      */
     [JsonPropertyName("precision")]
-    private int Precision { get; set; }
+    public int Precision { get; set; }
 
     /**
      * The scale of the column.
      */
     [JsonPropertyName("scale")]
-    private int Scale { get; set; }
+    public int Scale { get; set; }
 
     /**
      * Construct a new ColumnMetadata instance.

@@ -34,7 +34,7 @@ public class InteractiveClient {
 			if ("connect".Equals(command)) {
 				connect(lineElements);
 			} else if ("runQuery".Equals(command)) {
-				runQuery(line);
+				RunQuery(line);
 			} else if ("help".Equals(command)) {
 				processHelp(); 
 			} else if ("exit".Equals(command)) {
@@ -52,38 +52,44 @@ public class InteractiveClient {
 		return true;
 	}
 
-	private static void runQuery(String line)  {
+	private static void RunQuery(String Line)  {
         
-		int runQueryIndex = line.ToUpper().IndexOf("RUNQUERY"); 
-/*
-		line = line.Substring(runQueryIndex+8);
+		int runQueryIndex = Line.ToUpper().IndexOf("RUNQUERY"); 
+
+		Line = Line.Substring(runQueryIndex+8);
 		// Initialize and execute query
         
         if (job == null ) { 
             Console.WriteLine("Job is null"); return; 
         }
-		Query query = job.Query(line);
+		
+		Query query = job.Query(Line);
 		QueryResult<Object> result = query.Execute();
 
 		String? errorString = result.Error;
 		if (errorString != null) { 
 			Console.WriteLine("Query returned errorString:"+errorString); 
 		} else { 
-			QueryMetadata? metadata = result.Metadata; 
-			List<ColumnMetadata>? columns = metadata.Columns;
-			columns.forEach(col->System.out.print(col.getName()+" ")); 
+			QueryMetadata? metadata = result.Metadata ?? throw new Exception("NULL metadata");
+                
+
+            List<ColumnMetadata>? columns = metadata.Columns ?? throw new Exception("NULL column");
+                /* 
+			columns.ForEach(col=>Console.Write(col.Name+" ")); 
 			Console.WriteLine(); 
-			List<Object> data = result.getData();
-			ListIterator<Object> it = data.listIterator(); 
-			while (it.hasNext()) { 
-				HashMap hashmap = (HashMap) it.next(); 
-				columns.forEach(col->System.out.print(hashmap.get(col.getName())+" ")); 
+			List<Object>? data = result.Data;
+			if (data == null) throw new Exception("NULL data"); 
+			List<Object>.Enumerator enumerator = data.GetEnumerator(); 
+			while (enumerator.MoveNext()) { 
+				Dictionary<String, Object> hashmap = (Dictionary <String,Object>) enumerator.Current; 
+				columns.ForEach(col=>Console.Write(hashmap.GetValueOrDefault(col.Name)+" ")); 
 				Console.WriteLine(); 
 			}
+			*/
 		}
 		// Close query and job
 		query.close();
-*/
+
 		
 		
 	}

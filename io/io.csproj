@@ -6,4 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+<PropertyGroup>
+    <AssemblyName>mapepire</AssemblyName>
+</PropertyGroup>
+
 </Project>

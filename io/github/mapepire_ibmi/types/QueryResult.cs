@@ -17,37 +17,37 @@ public class QueryResult<T> : ServerResponse {
      * Whether the query execution is complete.
      */
     [JsonPropertyName("is_done")]
-    private bool IsDone  {get; set; }
+    public bool IsDone  {get; set; }
 
     /**
      * Whether there are results.
      */
     [JsonPropertyName("has_results")]
-    private bool HasResults {get; set; }
+    public bool HasResults {get; set; }
 
     /**
      * The number of rows affected by the query.
      */
     [JsonPropertyName("update_count")]
-    private int UpdateCount {get; set; }
+    public int UpdateCount {get; set; }
 
     /**
      * The data returned from the query.
      */
     [JsonPropertyName("data")]
-    private List<T>? Data {get; set; }
+    public List<T>? Data {get; set; }
 
     /**
      * The number of parameters in the prepared query.
      */
     [JsonPropertyName("parameter_count")]
-    private int ParameterCount {get; set; }
+    public int ParameterCount {get; set; }
 
     /**
      * The output parameters returned from the query.
      */
     [JsonPropertyName("output_parms")]
-    private List<ParameterResult>? OutputParms {get; set; }
+    public List<ParameterResult>? OutputParms {get; set; }
 
     /**
      * Construct a new QueryResult instance.
