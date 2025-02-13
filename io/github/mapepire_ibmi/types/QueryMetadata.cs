@@ -22,13 +22,13 @@ public class QueryMetadata {
      * The unique job identifier for the query.
      */
     [JsonPropertyName("job")]
-    private String? Job { get; set; }
+    public String? Job { get; set; }
 
     /**
      * The parameters for the query.
      */
     [JsonPropertyName("parameters")]
-    private List<ParameterDetail>? Parameters { get; set; }
+    public List<ParameterDetail>? Parameters { get; set; }
 
     /**
      * Construct a new QueryMetadata instance.

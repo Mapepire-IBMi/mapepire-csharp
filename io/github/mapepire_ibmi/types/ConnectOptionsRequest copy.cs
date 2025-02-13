@@ -7,7 +7,8 @@ namespace io.github.mapepire_ibmi.types {
 /**
  * Represents the parameter result for a query.
  */
-public class ConnectOptions {
+public class ConnectOptionsRequest
+ {
  
     [JsonPropertyName("id")]
     public  String Id { get; set; }
@@ -21,7 +22,8 @@ public class ConnectOptions {
     [JsonPropertyName("application")]
     public  String Applicatoin { get; set; }
 
-public ConnectOptions(String id, String type, String technique, String application) {
+public ConnectOptionsRequest
+(String id, String type, String technique, String application) {
     this.Id = id; 
     this.Type = type;
     this.Technique = technique;

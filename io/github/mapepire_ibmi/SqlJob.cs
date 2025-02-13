@@ -216,7 +216,7 @@ namespace io.github.mapepire_ibmi
             ClientWebSocket ws = this.getChannel(db2Server);
             this.socket = ws;
 
-            var connectOptions = new ConnectOptions(SqlJob.getNewUniqueId(),
+            var connectOptions = new ConnectOptionsRequest(SqlJob.getNewUniqueId(),
            "connect", "tcp", "C# client");
 
             String result;

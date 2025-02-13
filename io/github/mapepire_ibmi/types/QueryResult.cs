@@ -6,7 +6,7 @@ namespace io.github.mapepire_ibmi.types {
 /**
  * Represents a standard query result.
  */
-public class QueryResult<T> : ServerResponse {
+public class QueryResult : ServerResponse {
     /**
      * The metadata about the query results.
      */
@@ -35,7 +35,7 @@ public class QueryResult<T> : ServerResponse {
      * The data returned from the query.
      */
     [JsonPropertyName("data")]
-    public List<T>? Data {get; set; }
+    public List<Dictionary<String,Object>>? Data {get; set; }
 
     /**
      * The number of parameters in the prepared query.
@@ -73,7 +73,7 @@ public class QueryResult<T> : ServerResponse {
      * @param outputParms    The output parameters returned from the query.
      */
     public QueryResult(String id, bool success, String error, int sqlRc, String sqlState, QueryMetadata metadata,
-            bool isDone, bool hasResults, int updateCount, List<T> data, int parameterCount,
+            bool isDone, bool hasResults, int updateCount, List<Dictionary<String,Object>> data, int parameterCount,
             List<ParameterResult> outputParms) : base(id, success, error, sqlRc, sqlState) {
         this.Metadata = metadata;
         this.IsDone = isDone;

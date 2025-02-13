@@ -9,5 +9,9 @@
 <PropertyGroup>
     <AssemblyName>mapepire</AssemblyName>
 </PropertyGroup>
+<PropertyGroup>
+<OutputType>Library</OutputType>
+<OutputType>Exe</OutputType>
+</PropertyGroup>
 
 </Project>

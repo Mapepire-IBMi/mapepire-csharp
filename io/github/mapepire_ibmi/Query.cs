@@ -1,4 +1,6 @@
+using System.Text.Json;
 using io.github.mapepire_ibmi.types;
+using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace io.github.mapepire_ibmi {
 public class Query {
@@ -10,7 +12,7 @@ public class Query {
     /**
      * The SQL job that this query will be executed in.
      */
-    private SqlJob? Job { get; set; }
+    private SqlJob Job { get; set; }
 
     /**
      * The correlation ID associated with the query.
@@ -20,7 +22,7 @@ public class Query {
     /**
      * The SQL statement to be executed.
      */
-    private String? Sql;
+    private String Sql;
 
     /**
      * Whether the query has been prepared.
@@ -158,7 +160,7 @@ public class Query {
      * @param <T> The type of data to be returned.
      * @return A CompletableFuture that resolves to the query result.
      */
-    public QueryResult<Object> Execute()  {
+    public QueryResult Execute()  {
         return this.Execute(100);
     }
 
@@ -169,7 +171,7 @@ public class Query {
      * @param rowsToFetch The number of rows to fetch.
      * @return A CompletableFuture that resolves to the query result.
      */
-    public QueryResult<Object> Execute(int rowsToFetch) {
+    public QueryResult Execute(int rowsToFetch) {
         if (rowsToFetch <= 0) {
             throw new Exception("Rows to fetch must be greater than 0");
         }
@@ -182,75 +184,59 @@ public class Query {
             
         }
 
-/* TODO:  Fix this code.  */ 
-/* 
-        ObjectMapper objectMapper = SingletonObjectMapper.getInstance();
-        ObjectNode executeRequest = objectMapper.createObjectNode();
-        if (this.isCLCommand) {
-            executeRequest.put("id", SqlJob.getNewUniqueId("clcommand"));
-            executeRequest.put("type", "cl");
-            executeRequest.put("terse", this.isTerseResults);
-            executeRequest.put("cmd", this.sql);
-        } else {
-            executeRequest.put("id", SqlJob.getNewUniqueId("query"));
-            executeRequest.put("type", this.isPrepared ? "prepare_sql_execute" : "sql");
-            executeRequest.put("sql", this.sql);
-            executeRequest.put("terse", this.isTerseResults);
-            executeRequest.put("rows", rowsToFetch);
-            if (this.parameters != null) {
-                JsonNode parameters = objectMapper.valueToTree(this.parameters);
-                executeRequest.set("parameters", parameters);
+        string requestString; 
+        if (this.IsCLCommand) {
+            ClExecuteRequest clExecuteRequest = new ClExecuteRequest(SqlJob.getNewUniqueId("clcommand"),"cl",this.IsTerseResults,this.Sql);
+            requestString = JsonSerializer.Serialize(clExecuteRequest); 
+         } else {
+            if (Parameters == null) { 
+               SqlExecuteRequest request = new SqlExecuteRequest(SqlJob.getNewUniqueId("query"),
+               this.IsPrepared ? "prepare_sql_execute" : "sql", 
+               this.Sql, this.IsTerseResults,rowsToFetch); 
+               requestString = JsonSerializer.Serialize(request); 
+            } else {
+    SqlExecuteWithParametersRequest request = new SqlExecuteWithParametersRequest(SqlJob.getNewUniqueId("query"),
+               this.IsPrepared ? "prepare_sql_execute" : "sql", 
+               this.Sql, this.IsTerseResults,rowsToFetch, this.Parameters); 
+    requestString = JsonSerializer.Serialize(request); 
             }
         }
-*/
-/*
-        this.rowsToFetch = rowsToFetch;
-*/
 
-        return null; 
-        
-        /* job.send(objectMapper.writeValueAsString(executeRequest)) 
-        
-                .thenApply(result -> {
-                    QueryResult<T> queryResult;
-                    try {
-                        queryResult = objectMapper.readValue(result, QueryResult.class);
-                    } catch (Exception e) {
-                        throw new CompletionException(e);
-                    }
 
-                    this.state = queryResult.getIsDone() ? QueryState.RUN_DONE
-                            : QueryState.RUN_MORE_DATA_AVAILABLE;
+        this.RowsToFetch = rowsToFetch;
+        string result = Job.send(requestString);
+        QueryResult? queryResult = JsonSerializer.Deserialize<QueryResult>(result);
+        if (queryResult == null) throw new Exception("Null query result"); 
 
-                    if (!queryResult.getSuccess() && !this.isCLCommand) {
-                        this.state = QueryState.ERROR;
+        this.State = queryResult.IsDone ? QueryState.RUN_DONE
+                                : QueryState.RUN_MORE_DATA_AVAILABLE;
 
-                        List<String> errorList = new ArrayList<>();
-                        String error = queryResult.getError();
-                        if (error != null) {
-                            errorList.add(error);
-                        }
-                        String sqlState = queryResult.getSqlState();
-                        if (sqlState != null) {
-                            errorList.add(sqlState);
-                        }
-                        String sqlRc = String.valueOf(queryResult.getSqlRc());
-                        if (sqlRc != null) {
-                            errorList.add(sqlRc);
-                        }
-                        if (errorList.isEmpty()) {
-                            errorList.add("Failed to run query");
+        if (!queryResult.Success && !this.IsCLCommand) {
+                            this.State = QueryState.ERROR;
+
+                            List<String> errorList = [];
+                            String? error = queryResult.Error;
+                            if (error != null) {
+                                errorList.Add(error);
+                            }
+                            String? sqlState = queryResult.SqlState;
+                            if (sqlState != null) {
+                                errorList.Add(sqlState);
+                            }
+                            String sqlRc = ""+queryResult.SqlRc;
+                                errorList.Add(sqlRc);
+                            
+                            if (errorList.Count == 0) {
+                                errorList.Add("Failed to run query");
+                            }
+
+                            throw new Exception(String.Join(",", errorList)+ queryResult.SqlState);
                         }
 
-                        throw new CompletionException(
-                                new SQLException(String.join(", ", errorList), queryResult.getSqlState()));
-                    }
-
-                    this.correlationId = queryResult.getId();
-                    return queryResult;
-                });
-               */
-               return null; 
+                        this.CorrelationId = queryResult.Id;
+                        return queryResult;
+    
+                   
     }
 
     /**
@@ -258,7 +244,7 @@ public class Query {
      * 
      * @return A CompletableFuture that resolves to the query result.
      */
-    public QueryResult<Object> FetchMore()  {
+    public QueryResult FetchMore()  {
         return this.FetchMore(this.RowsToFetch);
     }
 
@@ -268,7 +254,7 @@ public class Query {
      * @param rowsToFetch The number of additional rows to fetch.
      * @return A CompletableFuture that resolves to the query result.
      */
-    public QueryResult<Object> FetchMore(int rowsToFetch)  {
+    public QueryResult FetchMore(int rowsToFetch)  {
         if (rowsToFetch <= 0) {
             throw new Exception("Rows to fetch must be greater than 0");
         }

@@ -33,15 +33,15 @@ public class InteractiveClient {
             string command = lineElements[0].ToLowerInvariant(); 
 			if ("connect".Equals(command)) {
 				connect(lineElements);
-			} else if ("runQuery".Equals(command)) {
+			} else if ("runquery".Equals(command)) {
 				RunQuery(line);
 			} else if ("help".Equals(command)) {
-				processHelp(); 
+				ProcessHelp(); 
 			} else if ("exit".Equals(command)) {
 				return false;
 			} else {
 				Console.WriteLine("Did not recognize command: " + line);
-				processHelp();
+				ProcessHelp();
 			}
 		}
 		} catch (Exception e) { 
@@ -64,7 +64,7 @@ public class InteractiveClient {
         }
 		
 		Query query = job.Query(Line);
-		QueryResult<Object> result = query.Execute();
+		QueryResult result = query.Execute();
 
 		String? errorString = result.Error;
 		if (errorString != null) { 
@@ -74,18 +74,18 @@ public class InteractiveClient {
                 
 
             List<ColumnMetadata>? columns = metadata.Columns ?? throw new Exception("NULL column");
-                /* 
+                
 			columns.ForEach(col=>Console.Write(col.Name+" ")); 
 			Console.WriteLine(); 
-			List<Object>? data = result.Data;
+			List<Dictionary<String,Object>>? data = result.Data;
 			if (data == null) throw new Exception("NULL data"); 
-			List<Object>.Enumerator enumerator = data.GetEnumerator(); 
+			List<Dictionary<String,Object>>.Enumerator enumerator = data.GetEnumerator(); 
 			while (enumerator.MoveNext()) { 
 				Dictionary<String, Object> hashmap = (Dictionary <String,Object>) enumerator.Current; 
-				columns.ForEach(col=>Console.Write(hashmap.GetValueOrDefault(col.Name)+" ")); 
+				columns.ForEach(col=>Console.Write(hashmap.GetValueOrDefault(col.Name ?? throw new Exception("Null column"))+" ")); 
 				Console.WriteLine(); 
 			}
-			*/
+			
 		}
 		// Close query and job
 		query.close();
@@ -94,7 +94,7 @@ public class InteractiveClient {
 		
 	}
 
-	private static void processHelp() {
+	private static void ProcessHelp() {
 		Console.WriteLine("Possible commands"); 
 		Console.WriteLine("connect host port user password validateCA CA");
 		Console.WriteLine("runQuery QUERY");
