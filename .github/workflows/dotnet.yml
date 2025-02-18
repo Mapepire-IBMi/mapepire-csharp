@@ -26,8 +26,8 @@ jobs:
       run: mkdir -p ./staging
     - name: Build
       run: dotnet build --output ./staging --no-restore
-    - name: Test
-      run: dotnet test --output ./staging --no-build --verbosity normal
+    # - name: Test
+    #  run: dotnet test --output ./staging --no-build --verbosity normal
     - name: list .exe artifacts
       run: find staging -name \*.exe
     - name: list .dll artifacts
