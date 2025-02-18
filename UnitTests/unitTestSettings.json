@@ -1,0 +1,7 @@
+{
+    "comment" : "This is where the mapepire server is running.  Specify a user /password for the connected system",
+    "host" : "ninaest",
+    "port": 8076,
+    "user":"dotnet",
+    "password":"mapapire25"
+}

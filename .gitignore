@@ -1,2 +1,5 @@
 io/bin/**
 io/obj/**
+UnitTests/bin/**
+UnitTests/obj/**
+
