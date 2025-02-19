@@ -21,19 +21,9 @@ public sealed class  QueryTests
     public void TestInitialize()
     {
         
-        Console.WriteLine(Directory.GetCurrentDirectory());
-        config = new ConfigurationBuilder()
-            .AddJsonFile("unitTestSettings.json")
-             .Build();
-
- if (config == null) throw new Exception("config is null"); 
-string? host = config["host"] ?? throw new Exception("host not specifed in unitTestSettings.json");
-        string? portString = config["port"] ?? throw new Exception("port not specifed in unitTestSettings.json");
-        int port = Int32.Parse(portString);
-string? user = config["user"] ?? throw new Exception("user not specifed in unitTestSettings.json");
-        string? password = config["password"] ?? throw new Exception("password not specifed in unitTestSettings.json");
-        DaemonServer daemonServer = new(host, port, user, password, false);
-        string successString  = "connection created using (" + host + "," + port + "," + user + ",*******)";
+        DaemonServer daemonServer = MapepireTest.GetTestDaemonServer(); 
+ 
+        string successString  = "connection created using (" + MapepireTest.host + "," + MapepireTest.port + "," + MapepireTest.user + ",*******)";
 		 sqlJob = new(); 
 		ConnectionResult? cr = sqlJob.connect(daemonServer);
 
