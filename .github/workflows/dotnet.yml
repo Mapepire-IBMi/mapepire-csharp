@@ -25,18 +25,18 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 9.0.x
-    - name: Restore dependencies
-      run: dotnet restore
-    - name: Create staging directory
-      run: mkdir -p ./staging
-    - name: Build
-      run: dotnet build --output ./staging --no-restore
     - name: Set Test Secrets
       run: |
         sed -i 's/"MAPEPIRE_HOST": "[^"]*"/"MAPEPIRE_HOST": "${{ secrets.MAPEPIRE_HOST }}"/' ${{ env.UNIT_TEST_SETTINGS }}
         sed -i 's/"MAPEPIRE_PORT": [0-9]*/"MAPEPIRE_PORT": ${{ secrets.MAPEPIRE_PORT }}/' ${{ env.UNIT_TEST_SETTINGS }}
         sed -i 's/"MAPEPIRE_USER": "[^"]*"/"MAPEPIRE_USER": "${{ secrets.MAPEPIRE_USER }}"/' ${{ env.UNIT_TEST_SETTINGS }}
         sed -i 's/"MAPEPIRE_PASSWORD": "[^"]*"/"MAPEPIRE_PASSWORD": "${{ secrets.MAPEPIRE_PASSWORD }}"/' ${{ env.UNIT_TEST_SETTINGS }}
+    - name: Restore dependencies
+      run: dotnet restore
+    - name: Create staging directory
+      run: mkdir -p ./staging
+    - name: Build
+      run: dotnet build --output ./staging --no-restore
     - name: Test
       run: dotnet test --output ./staging --no-build --verbosity normal
     - name: list .exe artifacts
