@@ -72,13 +72,15 @@ public class InteractiveClient {
 		} else { 
 			QueryMetadata? metadata = result.Metadata ?? throw new Exception("NULL metadata");
                 
-
+            List<Dictionary<String,Object>>? data = result.Data;
+			if (data == null) throw new Exception("NULL data"); 
+			Console.WriteLine(" rows returned = "+data.Count+" isDone="+result.IsDone);
             List<ColumnMetadata>? columns = metadata.Columns ?? throw new Exception("NULL column");
                 
 			columns.ForEach(col=>Console.Write(col.Name+" ")); 
 			Console.WriteLine(); 
-			List<Dictionary<String,Object>>? data = result.Data;
-			if (data == null) throw new Exception("NULL data"); 
+			
+
 			List<Dictionary<String,Object>>.Enumerator enumerator = data.GetEnumerator(); 
 			while (enumerator.MoveNext()) { 
 				Dictionary<String, Object> hashmap = (Dictionary <String,Object>) enumerator.Current; 
@@ -88,7 +90,7 @@ public class InteractiveClient {
 			
 		}
 		// Close query and job
-		query.close();
+		query.Close();
 
 		
 		
@@ -141,12 +143,12 @@ public class InteractiveClient {
 		}
 		daemonServer = newDaemonServer;
 		SqlJob newJob = new SqlJob(); 
-		ConnectionResult? cr = newJob.connect(daemonServer);
+		ConnectionResult? cr = newJob.Connect(daemonServer);
 		Console.WriteLine(successString);
         Console.WriteLine("JOB ="+newJob.Id);
 
 		if (job != null) { 
-			job.close(); 
+			job.Close(); 
 		}
 		job = newJob; 
 		 

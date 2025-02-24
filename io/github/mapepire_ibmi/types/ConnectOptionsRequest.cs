@@ -20,14 +20,14 @@ public class ConnectOptionsRequest
     public  String Technique { get; set; }
 
     [JsonPropertyName("application")]
-    public  String Applicatoin { get; set; }
+    public  String Application { get; set; }
 
 public ConnectOptionsRequest
 (String id, String type, String technique, String application) {
     this.Id = id; 
     this.Type = type;
     this.Technique = technique;
-    this.Applicatoin = application; 
+    this.Application = application; 
 }
 
 

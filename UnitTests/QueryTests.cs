@@ -25,7 +25,7 @@ public sealed class  QueryTests
  
         string successString  = "connection created using (" + MapepireTest.host + "," + MapepireTest.port + "," + MapepireTest.user + ",*******)";
 		 sqlJob = new(); 
-		ConnectionResult? cr = sqlJob.connect(daemonServer);
+		ConnectionResult? cr = sqlJob.Connect(daemonServer);
 
     }
 
@@ -42,7 +42,7 @@ public sealed class  QueryTests
         
         if (sqlJob == null) throw new Exception("sqlJob is null"); 
         String? job; 
-        String Line="select job_name as MYJOB from sysibm.sysdummy1"; 
+        String Line="select job_name  as MYJOB, current timestamp AS CURTIME from sysibm.sysdummy1"; 
         Query query = sqlJob.Query(Line);
 		QueryResult result = query.Execute();
 
@@ -53,11 +53,15 @@ public sealed class  QueryTests
 		} else { 
 			List<Dictionary<String,Object>>? data = result.Data ?? throw new Exception("NULL data");
             List<Dictionary<String,Object>>.Enumerator enumerator = data.GetEnumerator(); 
+            
 			if (enumerator.MoveNext()) { 
 				Dictionary<String, Object> hashmap = (Dictionary <String,Object>) enumerator.Current;
                 JsonElement? jsonElement = (JsonElement?)  hashmap.GetValueOrDefault("MYJOB");
                 job = jsonElement.ToString();
+                jsonElement = (JsonElement?)  hashmap.GetValueOrDefault("CURTIME");
+                String? curtime = jsonElement.ToString(); 
                 if (job == null) throw new Exception("Null JOB"); 
+                Console.WriteLine("..Line is "+job+","+curtime); 
 			} else {
                 Assert.Fail("Iterator was empty"); 
                 return;
@@ -65,7 +69,7 @@ public sealed class  QueryTests
 			
 		}
 		// Close query 
-		query.close();
+		query.Close();
 
         Assert.IsTrue(job.IndexOf("QZDASOINIT") > 0); 
     }

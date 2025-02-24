@@ -1,5 +1,6 @@
 using io.github.mapepire_ibmi.types;
 using io.github.mapepire_ibmi.types.jdbcOptions;
+using System.Data;
 using System.Net;
 using System.Net.Security;
 using System.Net.WebSockets;
@@ -47,20 +48,20 @@ namespace io.github.mapepire_ibmi
         /**
          * The JDBC options.
          */
-        private JDBCOptions? options;
+        private JDBCOptions? Options;
 
         /**
           * TODO: Currently unused but we will inevitably need a unique ID assigned to
           * each instance since server job names can be reused in some circumstances.
           */
-        private String uniqueId = SqlJob.getNewUniqueId("sqljob");
+        private String UniqueId = SqlJob.GetNewUniqueId("sqljob");
 
         /**
          * Construct a new SqlJob instance.
          */
         public SqlJob()
         {
-            this.options = new JDBCOptions();
+            this.Options = new JDBCOptions();
         }
 
         /**
@@ -70,7 +71,7 @@ namespace io.github.mapepire_ibmi
           */
         public SqlJob(JDBCOptions options)
         {
-            this.options = options;
+            this.Options = options;
         }
 
         /**
@@ -78,9 +79,9 @@ namespace io.github.mapepire_ibmi
          *
          * @return The unique ID.
          */
-        public static String getNewUniqueId()
+        public static String GetNewUniqueId()
         {
-            return SqlJob.getNewUniqueId("id");
+            return SqlJob.GetNewUniqueId("id");
         }
 
         /**
@@ -89,7 +90,7 @@ namespace io.github.mapepire_ibmi
          * @param prefix The custom prefix.
          * @return The unique ID.
          */
-        public static String getNewUniqueId(String prefix)
+        public static String GetNewUniqueId(String prefix)
         {
             lock (lockObject)
             {
@@ -112,7 +113,7 @@ namespace io.github.mapepire_ibmi
          * @param db2Server The server details for the connection.
          * @return A CompletableFuture that resolves to the WebSocketClient instance.
          */
-        private ClientWebSocket getChannel(DaemonServer db2Server)
+        private ClientWebSocket GetChannel(DaemonServer db2Server)
         {
 
             Uri uri = new Uri("wss://" + db2Server.Host + ":" + db2Server.Port + "/db/");
@@ -141,21 +142,13 @@ namespace io.github.mapepire_ibmi
          * @return The server's response.
          */
 
-        public String send(String content)
+        public String Send(String content)
         {
             if (this.isTracingChannelData)
             {
                 Console.WriteLine("\n>> " + content);
             }
 
-            /* Get the id from the input JSON 
-                    ObjectMapper objectMapper = SingletonObjectMapper.getInstance();
-                    Map<String, Object> req = objectMapper.readValue(content, Map.class);
-                    String id = (String) req.get("id");
-
-                    CompletableFuture<String> future = new CompletableFuture<>();
-                    responseMap.put(id, future);
-            */
             if (this.socket == null) throw new Exception("NULL SOCKET");
 
             Task sendTask = this.socket.SendAsync(
@@ -166,7 +159,7 @@ namespace io.github.mapepire_ibmi
 
             /* this.status = JobStatus.Busy; */
             sendTask.Wait();
-            var buffer = new byte[65535];
+            var buffer = new byte[1000000];
             Task<WebSocketReceiveResult> task = this.socket.ReceiveAsync(new ArraySegment<byte>(buffer),
             CancellationToken.None);
 
@@ -210,19 +203,19 @@ namespace io.github.mapepire_ibmi
          * @param db2Server The server details for the connection.
          * @return A CompletableFuture that resolves to the connection result.
          */
-        public ConnectionResult? connect(DaemonServer db2Server)
+        public ConnectionResult? Connect(DaemonServer db2Server)
         {
             /* this.Status = JobStatus.Connecting;  */
-            ClientWebSocket ws = this.getChannel(db2Server);
+            ClientWebSocket ws = this.GetChannel(db2Server);
             this.socket = ws;
 
-            var connectOptions = new ConnectOptionsRequest(SqlJob.getNewUniqueId(),
+            var connectOptions = new ConnectOptionsRequest(SqlJob.GetNewUniqueId(),
            "connect", "tcp", "C# client");
 
             String result;
             try
             {
-                result = this.send(JsonSerializer.Serialize(connectOptions));
+                result = this.Send(JsonSerializer.Serialize(connectOptions));
             }
             catch (Exception)
             {
@@ -237,7 +230,7 @@ namespace io.github.mapepire_ibmi
             }
             else
             {
-                this.dispose();
+                this.Dispose();
                 /* this.status = JobStatus.NotStarted; */
 
                 String? error = "Unknown";
@@ -293,131 +286,139 @@ namespace io.github.mapepire_ibmi
          * @return A CompletableFuture that resolves to the query result.
          */
 
-        /*
-            public QueryResult<T> Execute<T>(String sql)  {
-                return this.Execute(sql, new QueryOptions());
-            }
-        */
+
+        public QueryResult Execute(String sql)
+        {
+            return this.Execute(sql, new QueryOptions());
+        }
+
         /**
          * Execute an SQL command and returns the result.
          *
-         * @param <T>  The type of data to be returned.
          * @param sql  The SQL command to execute.
          * @param opts The options for configuring the query.
-         * @return A CompletableFuture that resolves to the query result.
+         * @return     The query result.
          */
-        /*
-       public <T> CompletableFuture<QueryResult<T>> execute(String sql, QueryOptions opts) {
-           Query query = query(sql, opts);
-           return query.<T>execute()
-                   .thenCompose(queryResult -> {
-                       try {
-                           return query.close().thenApply(v -> queryResult);
-                       } catch (Exception e) {
-                           throw new CompletionException(e);
-                       }
-                   }).thenApply(queryResult -> {
-                       if (!queryResult.getSuccess()) {
-                           String error = queryResult.getError();
-                           if (error != null) {
-                               throw new CompletionException(new SQLException(error, queryResult.getSqlState()));
-                           } else {
-                               throw new CompletionException(new UnknownServerException("Failed to execute"));
-                           }
-                       }
 
-                       return queryResult;
-                   });
-       }
-   */
+        public QueryResult Execute(String sql, QueryOptions opts)
+        {
+            Query query = Query(sql, opts);
+            QueryResult queryResult = query.Execute();
+            if (!queryResult.Success)
+            {
+                String? error = queryResult.Error;
+                if (error != null)
+                {
+                    throw new Exception(error + " SQLSTATE=" + queryResult.SqlState);
+                }
+                else
+                {
+                    throw new Exception("Failed to execute");
+                }
+            }
+            return queryResult;
+        }
+
         /**
          * Get the version information from the database server.
          *
-         * @return A CompletableFuture that resolves to the version check result.
+         * @return A version check result.
          */
-        /*
-       public CompletableFuture<VersionCheckResult> getVersion()   {
-           ObjectMapper objectMapper = SingletonObjectMapper.getInstance();
-           ObjectNode versionRequest = objectMapper.createObjectNode();
-           versionRequest.put("id", SqlJob.getNewUniqueId());
-           versionRequest.put("type", "getversion");
 
-           return this.send(objectMapper.writeValueAsString(versionRequest))
-                   .thenApply(result -> {
-                       VersionCheckResult versionCheckResult;
-                       try {
-                           // versionCheckResult = objectMapper.readValue(result, VersionCheckResult.class);
-                       } catch (Exception e) {
-                           throw new CompletionException(e);
-                       }
+        public VersionCheckResult GetVersion()
+        {
 
-                       if (!versionCheckResult.getSuccess()) {
-                           String error = versionCheckResult.getError();
-                           if (error != null) {
-                               throw new CompletionException(new SQLException(error, versionCheckResult.getSqlState()));
-                           } else {
-                               throw new CompletionException(new UnknownServerException("Failed to get version"));
-                           }
-                       }
+            VersionRequest versionRequest = new VersionRequest(SqlJob.GetNewUniqueId(), "getversion");
+            String result;
+            VersionCheckResult? versionCheckResult;
+            try
+            {
 
-                       return versionCheckResult;
-                   });
-       }
-   */
+                result = this.Send(JsonSerializer.Serialize(versionRequest));
+                versionCheckResult = JsonSerializer.Deserialize<VersionCheckResult>(result);
+                if (versionCheckResult == null) throw new Exception("null versionCheckResult");
+            }
+            catch (Exception)
+            {
+                // Todo:  Thow better exception
+                throw;
+            }
+
+
+            if (!versionCheckResult.Success)
+            {
+                String? error = versionCheckResult.Error;
+                if (error != null)
+                {
+                    throw new Exception(error + " SQLSTATE:" + versionCheckResult.SqlState);
+                }
+                else
+                {
+                    throw new Exception("Failed to get version");
+                }
+            }
+
+            return versionCheckResult;
+
+        }
+
         /**
          * Explains a SQL statement and returns the results.
          *
          * @param statement The SQL statement to explain.
-         * @return A CompletableFuture that resolves to the explain results.
+         * @return The explain results.
          */
-        /*
-            public CompletableFuture<ExplainResults<?>> explain(String statement)  {
-                return this.explain(statement, ExplainType.RUN);
+        
+            public ExplainResults Explain(String statement)  {
+                return this.Explain(statement, ExplainType.RUN);
             }
-        */
+        
 
         /**
          * Explains a SQL statement and returns the results.
          *
          * @param statement The SQL statement to explain.
          * @param type      The type of explain to perform (default is ExplainType.Run).
-         * @return A CompletableFuture that resolves to the explain results.
+         * @return          The explain results.
          */
-        /*
-            public CompletableFuture<ExplainResults<?>> explain(String statement, ExplainType type) throws Exception {
-                ObjectMapper objectMapper = SingletonObjectMapper.getInstance();
-                ObjectNode explainRequest = objectMapper.createObjectNode();
-                explainRequest.put("id", SqlJob.getNewUniqueId());
-                explainRequest.put("type", "dove");
-                explainRequest.put("sql", statement);
-                explainRequest.put("run", type == ExplainType.RUN);
 
-                return this.send(objectMapper.writeValueAsString(explainRequest))
-                        .thenApply(result -> {
-                            ExplainResults<?> explainResult;
-                            try {
-                                explainResult = objectMapper.readValue(result, ExplainResults.class);
-                            } catch (Exception e) {
-                                throw new CompletionException(e);
-                            }
+        public ExplainResults Explain(String statement, ExplainType type)
+        {
+            ExplainRequest explainRequest = new(SqlJob.GetNewUniqueId(), "dove",
+         statement, type == ExplainType.RUN);
 
-                            if (!explainResult.getSuccess()) {
-                                String error = explainResult.getError();
-                                if (error != null) {
-                                    throw new CompletionException(new SQLException(error, explainResult.getSqlState()));
-                                } else {
-                                    throw new CompletionException(new UnknownServerException("Failed to explain"));
-                                }
-                            }
+            String stringResult = this.Send(JsonSerializer.Serialize(explainRequest));
 
-                            return explainResult;
-                        });
+            ExplainResults? results = JsonSerializer.Deserialize<ExplainResults>(stringResult);
+            if (results != null)
+            {
+
+                if (!results.Success)
+                {
+                    String? error = results.Error;
+                    if (error != null)
+                    {
+                        throw new Exception(error + " sqlstate=" + results.SqlState);
+                    }
+                    else
+                    {
+                        throw new Exception("Failed to explain");
+                    }
+                }
+
+                return results;
             }
-        */
+            else
+            {
+                throw new Exception("NULL EXPLAIN RESULTS");
+            }
+
+        }
+
         /**
          * Get the file path of the trace file, if available.
          */
-        public String? getTraceFilePath()
+        public String? GetTraceFilePath()
         {
             return this.traceDest;
         }
@@ -425,48 +426,50 @@ namespace io.github.mapepire_ibmi
         /**
          * Get trace data from the backend.
          *
-         * @return A CompletableFuture that resolves to the trace data result.
+         * @return The trace data result.
          */
-        /*
-       public CompletableFuture<GetTraceDataResult> getTraceData() throws Exception {
-           ObjectMapper objectMapper = SingletonObjectMapper.getInstance();
-           ObjectNode traceDataRequest = objectMapper.createObjectNode();
-           traceDataRequest.put("id", SqlJob.getNewUniqueId());
-           traceDataRequest.put("type", "gettracedata");
 
-           return this.send(objectMapper.writeValueAsString(traceDataRequest))
-                   .thenApply(result -> {
-                       GetTraceDataResult traceDataResult;
-                       try {
-                           traceDataResult = objectMapper.readValue(result, GetTraceDataResult.class);
-                       } catch (Exception e) {
-                           throw new CompletionException(e);
-                       }
+        public GetTraceDataResult GetTraceDataResult()
+        {
+            IdTypeRequest traceDataRequest = new(SqlJob.GetNewUniqueId(), "gettracedata");
 
-                       if (!traceDataResult.getSuccess()) {
-                           String error = traceDataResult.getError();
-                           if (error != null) {
-                               throw new CompletionException(new SQLException(error, traceDataResult.getSqlState()));
-                           } else {
-                               throw new CompletionException(new UnknownServerException("Failed to get trace data"));
-                           }
-                       }
+            String stringResult = this.Send(JsonSerializer.Serialize(traceDataRequest));
 
-                       return traceDataResult;
-                   });
-       }
-   */
+            GetTraceDataResult? traceDataResult = JsonSerializer.Deserialize<GetTraceDataResult>(stringResult);
+
+            if (traceDataResult == null)
+            {
+                throw new Exception("Null return from traceDatate");
+            }
+
+            if (!traceDataResult.Success)
+            {
+                String? error = traceDataResult.Error;
+                if (error != null)
+                {
+                    throw new Exception(error + " SQLCODE=" + traceDataResult.SqlState);
+                }
+                else
+                {
+                    throw new Exception("Failed to get trace data");
+                }
+            }
+
+            return traceDataResult;
+
+        }
+
         /**
          * Set the server trace destination.
          * 
          * @param dest The server trace destination.
-         * @return A CompletableFuture that resolves to the set config result.
+         * @return The set config result.
          */
-        /*
-          public CompletableFuture<SetConfigResult> setTraceDest(ServerTraceDest dest) throws Exception {
-              return setTraceConfig(dest, null, null, null);
+        
+          public SetConfigResult SetTraceDest(ServerTraceDest dest) {
+              return SetTraceConfig(dest, null, null, null);
           }
-      */
+      
 
         /**
          * Set the server trace level.
@@ -474,11 +477,11 @@ namespace io.github.mapepire_ibmi
          * @param level The server trace level.
          * @return A CompletableFuture that resolves to the set config result.
          */
-        /* 
-            public CompletableFuture<SetConfigResult> setTraceLevel(ServerTraceLevel level) throws Exception {
-                return setTraceConfig(null, level, null, null);
+       
+            public SetConfigResult setTraceLevel(ServerTraceLevel level)  {
+                return SetTraceConfig(null, level, null, null);
             }
-        */
+      
 
         /**
          * Set the JTOpen trace data destination.
@@ -486,11 +489,11 @@ namespace io.github.mapepire_ibmi
          * @param jtOpenTraceDest The JTOpen trace data destination.
          * @return A CompletableFuture that resolves to the set config result.
          */
-        /*
-            public CompletableFuture<SetConfigResult> setJtOpenTraceDest(ServerTraceDest jtOpenTraceDest) throws Exception {
-                return setTraceConfig(null, null, jtOpenTraceDest, null);
+        
+            public SetConfigResult SetJtOpenTraceDest(ServerTraceDest jtOpenTraceDest)  {
+                return SetTraceConfig(null, null, jtOpenTraceDest, null);
             }
-        */
+        
 
         /**
          * Set the JTOpen trace level.
@@ -498,11 +501,11 @@ namespace io.github.mapepire_ibmi
          * @param jtOpenTraceLevel The JTOpen trace level.
          * @return A CompletableFuture that resolves to the set config result.
          */
-        /*
-            public CompletableFuture<SetConfigResult> setJtOpenTraceLevel(ServerTraceLevel jtOpenTraceLevel) throws Exception {
-                return setTraceConfig(null, null, null, jtOpenTraceLevel);
+        
+            public SetConfigResult SetJtOpenTraceLevel(ServerTraceLevel jtOpenTraceLevel)  {
+                return SetTraceConfig(null, null, null, jtOpenTraceLevel);
             }
-        */
+        
         /**
          * Set the trace config on the backend.
          *
@@ -510,70 +513,68 @@ namespace io.github.mapepire_ibmi
          * @param level            The server trace level.
          * @param jtOpenTraceDest  The JTOpen trace data destination.
          * @param jtOpenTraceLevel The JTOpen trace level.
-         * @return A CompletableFuture that resolves to the set config result.
+         * @return The set config result.
          */
-        /*
-       public CompletableFuture<SetConfigResult> setTraceConfig(ServerTraceDest dest, ServerTraceLevel level,
-               ServerTraceDest jtOpenTraceDest, ServerTraceLevel jtOpenTraceLevel) throws Exception {
-           ObjectMapper objectMapper = SingletonObjectMapper.getInstance();
-           ObjectNode setTraceConfigRequest = objectMapper.createObjectNode();
-           setTraceConfigRequest.put("id", SqlJob.getNewUniqueId());
-           setTraceConfigRequest.put("type", "setconfig");
 
-           if (dest != null) {
-               setTraceConfigRequest.put("tracedest", dest.getValue());
-           }
-           if (level != null) {
-               setTraceConfigRequest.put("tracelevel", level.getValue());
-           }
-           if (jtOpenTraceDest != null) {
-               setTraceConfigRequest.put("jtopentracedest", jtOpenTraceDest.getValue());
-           }
-           if (jtOpenTraceLevel != null) {
-               setTraceConfigRequest.put("jtopentracelevel", jtOpenTraceLevel.getValue());
-           }
+        public SetConfigResult SetTraceConfig(ServerTraceDest? dest, ServerTraceLevel? level,
+                ServerTraceDest? jtOpenTraceDest, ServerTraceLevel? jtOpenTraceLevel)
+        {
 
-           this.isTracingChannelData = true;
+            this.isTracingChannelData = true;
 
-           return this.send(objectMapper.writeValueAsString(setTraceConfigRequest))
-                   .thenApply(result -> {
-                       SetConfigResult setConfigResult;
-                       try {
-                           setConfigResult = objectMapper.readValue(result, SetConfigResult.class);
-                       } catch (Exception e) {
-                           throw new CompletionException(e);
-                       }
+            SetTraceConfigRequest setTraceConfigRequest = new(SqlJob.GetNewUniqueId(), "setconfig");
+            if (dest != null)
+            {
+                setTraceConfigRequest.Tracedest = dest.GetValue();
+            }
+            if (level != null)
+            {
+                setTraceConfigRequest.Tracelevel = level.GetValue();
+            }
+            if (jtOpenTraceDest != null)
+            {
+                setTraceConfigRequest.JTOpenTraceDest = jtOpenTraceDest.GetValue();
+            }
+            if (jtOpenTraceLevel != null)
+            {
+                setTraceConfigRequest.JTOpenTraceLevel = jtOpenTraceLevel.GetValue();
+            }
+            
+            String stringResult = this.Send(JsonSerializer.Serialize(setTraceConfigRequest));
+            SetConfigResult? setConfigResult = JsonSerializer.Deserialize<SetConfigResult>(stringResult) ?? throw new Exception("setConfigResult is null");
+            if (!setConfigResult.Success)
+            {
+                String? error = setConfigResult.Error;
+                if (error != null)
+                {
+                    throw new Exception(error + " SQLSTATE: " + setConfigResult.SqlState);
+                }
+                else
+                {
+                    throw new Exception("Failed to set trace config");
+                }
+            }
+            this.traceDest = setConfigResult.TraceDest != null
+                                     && setConfigResult.TraceDest[0] == '/'
+                                             ? setConfigResult.TraceDest
+                                             : null;
+            return setConfigResult;
 
-                       if (!setConfigResult.getSuccess()) {
-                           String error = setConfigResult.getError();
-                           if (error != null) {
-                               throw new CompletionException(new SQLException(error, setConfigResult.getSqlState()));
-                           } else {
-                               throw new CompletionException(new UnknownServerException("Failed to set trace config"));
-                           }
-                       }
+        }
 
-                       this.traceDest = setConfigResult.getTraceDest() != null
-                               && setConfigResult.getTraceDest().charAt(0) == '/'
-                                       ? setConfigResult.getTraceDest()
-                                       : null;
-                       return setConfigResult;
-                   });
-       }
-   */
         /**
          * Create a CL command query.
          *
          * @param cmd The CL command.
          * @return A new Query instance for the command.
          */
-        /*
-          public Query clCommand(String cmd) {
-              QueryOptions options = new QueryOptions();
-              options.setIsClCommand(true);
-              return new Query(this, cmd, options);
-          }
-      */
+
+        public Query ClCommand(String cmd)
+        {
+            QueryOptions options = new() { IsClCommand = true };
+            return new Query(this, cmd, options);
+        }
+
 
         /**
          * Check if the job is under commitment control based on the transaction
@@ -581,15 +582,15 @@ namespace io.github.mapepire_ibmi
          *
          * @return Whether the job is under commitment control.
          */
-        public bool underCommitControl()
+        public bool UnderCommitControl()
         {
-            if (this.options == null)
+            if (this.Options == null)
             {
                 return false;
             }
-            return this.options.getOption(Option.TRANSACTION_ISOLATION) != null
+            return this.Options.getOption(Option.TRANSACTION_ISOLATION) != null
                     && TransactionIsolation.NONE.Equals(
-                        this.options.getOption(Option.TRANSACTION_ISOLATION));
+                        this.Options.getOption(Option.TRANSACTION_ISOLATION));
         }
 
         /**
@@ -630,27 +631,29 @@ namespace io.github.mapepire_ibmi
          * Ends the current transaction by committing or rolling back.
          *
          * @param type The type of transaction ending (commit or rollback).
-         * @return A CompletableFuture that resolves to the result of the transaction
+         * @return The result of the transaction
          *         operation.
          */
-        /*
-          public CompletableFuture<QueryResult<JobLogEntry>> endTransaction(TransactionEndType type) throws Exception {
-              String query;
 
-              switch (type) {
-                  case COMMIT:
-                      query = "COMMIT";
-                      break;
-                  case ROLLBACK:
-                      query = "ROLLBACK";
-                      break;
-                  default:
-                      throw new IllegalArgumentException("TransactionEndType " + type + " not valid");
-              }
+        public QueryResult EndTransaction(TransactionEndType type)
+        {
+            String query;
 
-              return this.query(query).execute();
-          }
-      */
+            switch (type)
+            {
+                case TransactionEndType.COMMIT:
+                    query = "COMMIT";
+                    break;
+                case TransactionEndType.ROLLBACK:
+                    query = "ROLLBACK";
+                    break;
+                default:
+                    throw new Exception("TransactionEndType " + type + " not valid");
+            }
+
+            return this.Query(query).Execute();
+        }
+
 
         /**
          * Get the unique ID assigned to this SqlJob instance.
@@ -659,15 +662,15 @@ namespace io.github.mapepire_ibmi
          *
          * @return The unique ID assigned to this SqlJob instance
          */
-        public String getUniqueId()
+        public String GetUniqueId()
         {
-            return this.uniqueId;
+            return this.UniqueId;
         }
 
         /**
          * Enable local tracing of channel data.
          */
-        public void enableLocalTrace()
+        public void EnableLocalTrace()
         {
             this.isTracingChannelData = true;
         }
@@ -675,15 +678,15 @@ namespace io.github.mapepire_ibmi
         /**
          * Close the job.
          */
-        public void close()
+        public void Close()
         {
-            this.dispose();
+            this.Dispose();
         }
 
         /**
          * Close the socket and set the status to be ended.
          */
-        private void dispose()
+        private void Dispose()
         {
             if (this.socket != null)
             {

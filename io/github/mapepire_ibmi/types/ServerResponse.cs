@@ -23,6 +23,8 @@ public class ServerResponse {
      * The error message, if any.
      */
      [JsonPropertyName("error")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+
     public string? Error {get; set; }
 
     /**

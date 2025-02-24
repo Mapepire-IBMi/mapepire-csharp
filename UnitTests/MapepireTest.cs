@@ -41,5 +41,18 @@ public sealed class  MapepireTest
 
     }
 
+public static DaemonServer GetInvalidTestDaemonServer() {
+     if (config == null) { 
+        config = new ConfigurationBuilder()
+            .AddJsonFile("unitTestSettings.json")
+            .AddEnvironmentVariables()
+             .Build();
+        }
+        host = config["MAPEPIRE_HOST"] ?? throw new Exception("HOST not specifed in ENVVAR or  unitTestSettings.json");
+        string? portString = config["MAPEPIRE_PORT"] ?? throw new Exception("PORT not specifed in ENVVARA or unitTestSettings.json");
+        port = Int32.Parse(portString);
+        DaemonServer daemonServer = new(host, port, "BAD_USER", "BAD PASSWORD", false);
+        return daemonServer;
+}
  
 }

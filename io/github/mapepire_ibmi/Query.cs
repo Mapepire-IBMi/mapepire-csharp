@@ -7,7 +7,7 @@ public class Query {
     /**
      * A list of all global queries that are currently open.
      */
-    private static List<Query> globalQueryList = [];
+    private static List<Query> GlobalQueryList = [];
 
     /**
      * The SQL job that this query will be executed in.
@@ -73,8 +73,8 @@ public class Query {
     }
 
     public static void AddQuery(Query query) {
-        lock(globalQueryList) {
-          globalQueryList.Add(query);
+        lock(GlobalQueryList) {
+          GlobalQueryList.Add(query);
         }
     }
 
@@ -84,9 +84,9 @@ public class Query {
          * @param id The correlation ID of the query.
          * @return The corresponding Query instance or null if not found.
          */
-        public static Query? byId(String? id)
+        public static Query? ById(String? id)
         {
-            lock (globalQueryList)
+            lock (GlobalQueryList)
             {
                 if (id == null || id.Equals(""))
                 {
@@ -94,7 +94,7 @@ public class Query {
                 }
                 else
                 {
-                    return Query.globalQueryList.Find(x => (id.Equals(x.CorrelationId)));
+                    return Query.GlobalQueryList.Find(x => (id.Equals(x.CorrelationId)));
 
                 }
             }
@@ -104,8 +104,8 @@ public class Query {
          * 
          * @return A list of correlation IDs for open queries.
          */
-        public static List<String?> getOpenIds() {
-        return Query.getOpenIds(null);
+        public static List<String?> GetOpenIds() {
+        return Query.GetOpenIds(null);
     }
 
     /**
@@ -114,9 +114,9 @@ public class Query {
      * @param forJob The job to filter the queries by.
      * @return A list of correlation IDs for open queries.
      */
-    public static List<String?> getOpenIds(SqlJob? forJob) {
-        lock(globalQueryList) {
-                List<Query> matchingQueries = Query.globalQueryList.FindAll(
+    public static List<String?> GetOpenIds(SqlJob? forJob) {
+        lock(GlobalQueryList) {
+                List<Query> matchingQueries = Query.GlobalQueryList.FindAll(
                                 q => (forJob == null || (forJob.Equals(q.Job))) &&
                              (q.State == QueryState.NOT_YET_RUN
                                         || q.State == QueryState.RUN_MORE_DATA_AVAILABLE));
@@ -129,8 +129,8 @@ public class Query {
      * Clean up queries that are done or are in error state from the global query
      * list.
      */
-    public void cleanup()  {
-         lock(globalQueryList) {
+    public void Cleanup()  {
+         lock(GlobalQueryList) {
         /* TODO  .. Java code below */ 
         /* 
         List<CompletableFuture<Void>> futures = globalQueryList.stream()
@@ -186,16 +186,16 @@ public class Query {
 
         string requestString; 
         if (this.IsCLCommand) {
-            ClExecuteRequest clExecuteRequest = new ClExecuteRequest(SqlJob.getNewUniqueId("clcommand"),"cl",this.IsTerseResults,this.Sql);
+            ClExecuteRequest clExecuteRequest = new ClExecuteRequest(SqlJob.GetNewUniqueId("clcommand"),"cl",this.IsTerseResults,this.Sql);
             requestString = JsonSerializer.Serialize(clExecuteRequest); 
          } else {
             if (Parameters == null) { 
-               SqlExecuteRequest request = new SqlExecuteRequest(SqlJob.getNewUniqueId("query"),
+               SqlExecuteRequest request = new SqlExecuteRequest(SqlJob.GetNewUniqueId("query"),
                this.IsPrepared ? "prepare_sql_execute" : "sql", 
                this.Sql, this.IsTerseResults,rowsToFetch); 
                requestString = JsonSerializer.Serialize(request); 
             } else {
-    SqlExecuteWithParametersRequest request = new SqlExecuteWithParametersRequest(SqlJob.getNewUniqueId("query"),
+    SqlExecuteWithParametersRequest request = new SqlExecuteWithParametersRequest(SqlJob.GetNewUniqueId("query"),
                this.IsPrepared ? "prepare_sql_execute" : "sql", 
                this.Sql, this.IsTerseResults,rowsToFetch, this.Parameters); 
     requestString = JsonSerializer.Serialize(request); 
@@ -204,7 +204,7 @@ public class Query {
 
 
         this.RowsToFetch = rowsToFetch;
-        string result = Job.send(requestString);
+        string result = Job.Send(requestString);
         QueryResult? queryResult = JsonSerializer.Deserialize<QueryResult>(result);
         if (queryResult == null) throw new Exception("Null query result"); 
 
@@ -242,7 +242,7 @@ public class Query {
     /**
      * Fetch more rows from the currently running query.
      * 
-     * @return A CompletableFuture that resolves to the query result.
+     * @return A query result.
      */
     public QueryResult FetchMore()  {
         return this.FetchMore(this.RowsToFetch);
@@ -252,7 +252,7 @@ public class Query {
      * Fetch more rows from the currently running query.
      * 
      * @param rowsToFetch The number of additional rows to fetch.
-     * @return A CompletableFuture that resolves to the query result.
+     * @return A query result.
      */
     public QueryResult FetchMore(int rowsToFetch)  {
         if (rowsToFetch <= 0) {
@@ -310,9 +310,9 @@ public class Query {
     /**
      * Close the query.
      * 
-     * @return A CompletableFuture that resolves when the query is closed.
+     * @return The results of closing the query. 
      */
-    public String close()  {
+    public String Close()  {
         if (CorrelationId != null && State != QueryState.RUN_DONE) {
             State = QueryState.RUN_DONE;
 /*
