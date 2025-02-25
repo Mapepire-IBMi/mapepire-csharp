@@ -29,8 +29,10 @@ jobs:
       run: mkdir -p ./staging
     - name: Build
       run: dotnet build --output ./staging --no-restore
+    # This step won't run when coming from a fork
     - name: Test
       run: dotnet test --output ./staging --no-build --verbosity normal
+      if: ${{ secrets.MAPEPIRE_HOST != '' }}
       env:
         MAPEPIRE_HOST: ${{ secrets.MAPEPIRE_HOST }}
         MAPEPIRE_PORT: ${{ secrets.MAPEPIRE_PORT }}
