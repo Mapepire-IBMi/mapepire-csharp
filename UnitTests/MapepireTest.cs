@@ -30,11 +30,11 @@ public sealed class  MapepireTest
             .AddEnvironmentVariables()
              .Build();
         }
-        host = config["MAPEPIRE_HOST"] ?? throw new Exception("HOST not specifed in ENVVAR or  unitTestSettings.json");
-        string? portString = config["MAPEPIRE_PORT"] ?? throw new Exception("PORT not specifed in ENVVARA or unitTestSettings.json");
+        host = config["MAPEPIRE_HOST"] ?? throw new Exception("MAPEPIRE_HOST not specifed in ENVVAR or  unitTestSettings.json");
+        string? portString = config["MAPEPIRE_PORT"] ?? throw new Exception("MAPEPIRE_PORT not specifed in ENVVAR or unitTestSettings.json");
         port = Int32.Parse(portString);
-        user = config["MAPEPIRE_USER"] ?? throw new Exception("USER not specifed in ENVVAR or unitTestSettings.json");
-        password = config["MAPEPIRE_PASSWORD"] ?? throw new Exception("password not specifed in ENVVAR or unitTestSettings.json");
+        user = config["MAPEPIRE_USER"] ?? throw new Exception("MAPEPIRE_USER not specifed in ENVVAR or unitTestSettings.json");
+        password = config["MAPEPIRE_PASSWORD"] ?? throw new Exception("MAPEPIRE_PASSWORD not specifed in ENVVAR or unitTestSettings.json");
         DaemonServer daemonServer = new(host, port, user, password, false);
         return daemonServer; 
 
