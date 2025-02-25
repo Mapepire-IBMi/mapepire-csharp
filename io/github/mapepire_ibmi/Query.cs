@@ -204,6 +204,7 @@ public class Query {
 
 
         this.RowsToFetch = rowsToFetch;
+        if (Job == null) throw new Exception("Job is null"); 
         string result = Job.Send(requestString);
         QueryResult? queryResult = JsonSerializer.Deserialize<QueryResult>(result);
         if (queryResult == null) throw new Exception("Null query result"); 
