@@ -159,10 +159,9 @@ namespace io.github.mapepire_ibmi
 
             /* this.status = JobStatus.Busy; */
             sendTask.Wait();
-            var buffer = new byte[1000000];
+            var buffer = new byte[100000];
             Task<WebSocketReceiveResult> task = this.socket.ReceiveAsync(new ArraySegment<byte>(buffer),
             CancellationToken.None);
-
             task.Wait();
             WebSocketReceiveResult taskResult = task.Result;
             if (taskResult.EndOfMessage)
@@ -171,8 +170,37 @@ namespace io.github.mapepire_ibmi
             }
             else
             {
-                // TODO:  Loop to get all of message. 
-                throw new Exception("Partial buffer");
+                List<byte[]> buffers = []; 
+                List<Int32> counts = []; 
+                int totalSize = 0; 
+                int blockSize; 
+                blockSize = taskResult.Count; 
+                // Loop to get all. 
+                while (!taskResult.EndOfMessage) { 
+                    buffers.Add(buffer);
+                    counts.Add(taskResult.Count); 
+                    totalSize += taskResult.Count; 
+                    buffer = new byte[blockSize] ;   
+                    task = this.socket.ReceiveAsync(new ArraySegment<byte>(buffer),
+            CancellationToken.None);
+                    task.Wait();
+                    taskResult = task.Result;
+                    
+                }
+                // Put the rest into the buffer
+                buffers.Add(buffer);
+                counts.Add(taskResult.Count); 
+                totalSize += taskResult.Count; 
+                    
+                // Put into 1 buffer; 
+                buffer = new byte[totalSize];
+                int offset = 0; 
+                for (int i = 0; i < buffers.Count; i++) { 
+                    System.Buffer.BlockCopy(buffers[i], 0, buffer, offset, counts[i]);
+                    offset += counts[i]; 
+                } 
+                return Encoding.UTF8.GetString(buffer, 0, totalSize); 
+
             }
         }
 
