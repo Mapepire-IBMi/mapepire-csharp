@@ -12,43 +12,43 @@ public class ParameterResult {
      * The parameter result name.
      */
     [JsonPropertyName("name")]
-    private String? Name { get; set; }
+    public String? Name { get; set; }
 
     /**
      * The parameter result type.
      */
     [JsonPropertyName("type")]
-    private String? Type { get; set; }
+    public String? Type { get; set; }
 
     /**
      * The parameter result index.
      */
     [JsonPropertyName("index")]
-    private int Index { get; set; }
+    public int Index { get; set; }
 
     /**
      * The parameter result precision.
      */
     [JsonPropertyName("precision")]
-    private int Precision { get; set; }
+    public int Precision { get; set; }
 
     /**
      * The parameter result scale.
      */
   [JsonPropertyName("scale")]
-    private int Scale { get; set; }
+    public int Scale { get; set; }
 
     /**
      * The parameter result CCSID.
      */
     [JsonPropertyName("ccsid")]
-    private int Ccsid { get; set; }
+    public int Ccsid { get; set; }
 
     /**
      * The parameter result value (only available for OUT/INOUT).
      */
     [JsonPropertyName("value")]
-    private Object? Value { get; set; }
+    public Object? Value { get; set; }
 
     /**
      * Construct a new ParameterResult instance.

@@ -60,8 +60,22 @@ public sealed class  ConnectionTests
                 Assert.IsTrue(ex.ToString().Contains("The application server rejected the connection."));
                
             }
+     
+    }
+  [TestMethod]
+    public void NewJobOnSubsequentConnects()  {
+        DaemonServer daemonServer = MapepireTest.GetTestDaemonServer(); 
       
+		SqlJob newJob = new(); 
+		ConnectionResult? result1  = newJob.Connect(daemonServer);
+        string? jobId1= newJob.Id ?? throw new Exception("job is null");
+        Assert.IsTrue(jobId1.IndexOf("QZDASOINIT") > 0); 
 
+        ConnectionResult? result2 = newJob.Connect(daemonServer);
+        string? jobId2 = newJob.Id ?? throw new Exception("job is null");
+        Assert.IsTrue(jobId2.IndexOf("QZDASOINIT") > 0); 
+
+        Assert.AreNotEqual(jobId1, jobId2);
     }
 
     [TestMethod]

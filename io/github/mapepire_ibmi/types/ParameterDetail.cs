@@ -11,31 +11,31 @@ public class ParameterDetail {
      * The parameter name.
      */
     [JsonPropertyName("name")]
-    private String? Name { get; set; }
+    public String? Name { get; set; }
 
     /**
      * The parameter type.
      */
     [JsonPropertyName("type")]
-    private String? Type { get; set; }
+    public String? Type { get; set; }
 
     /**
      * The parameter mode.
      */
     [JsonPropertyName("mode")]
-    private ParameterMode? Mode { get; set; }
+    public ParameterMode? Mode { get; set; }
 
     /**
      * The parameter precision.
      */
     [JsonPropertyName("precision")]
-    private int Precision { get; set; }
+    public int Precision { get; set; }
 
     /**
      * The parameter scale.
      */
     [JsonPropertyName("scale")]
-    private int Scale { get; set; }
+    public int Scale { get; set; }
 
     /**
      * Construct a new ParameterDetail instance.
