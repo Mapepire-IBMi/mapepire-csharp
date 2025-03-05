@@ -7,12 +7,12 @@ public class Naming {
     /**
      * As in schema.table.
      */
-public static readonly String SQL = "sql";
+public static readonly Naming SQL = new Naming("sql");
 
     /**
      * As in schema/table.
      */
-public static readonly String SYSTEM = "system";
+public static readonly Naming SYSTEM = new Naming("system");
 
     /**
      * The "naming" value.

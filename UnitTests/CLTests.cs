@@ -22,6 +22,7 @@ public sealed class  CLTests
     {
     }
 
+
     
     [TestMethod]
     public void ValidCLCommand()

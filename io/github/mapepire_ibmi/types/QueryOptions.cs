@@ -39,7 +39,7 @@ public class QueryOptions {
      * @param isClCommand    Whether the command is a CL command.
      * @param parameters     The parameters for the query.
      */
-    public QueryOptions(bool isTerseResults, bool isClCommand, List<Object> parameters) {
+    public QueryOptions(bool isTerseResults, bool isClCommand, List<Object>? parameters) {
         this.IsTerseResults = isTerseResults;
         this.IsClCommand = isClCommand;
         this.Parameters = parameters;

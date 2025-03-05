@@ -4,6 +4,7 @@ using System.Data;
 using System.Net;
 using System.Net.Security;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
@@ -236,9 +237,56 @@ namespace io.github.mapepire_ibmi
             /* this.Status = JobStatus.Connecting;  */
             ClientWebSocket ws = this.GetChannel(db2Server);
             this.socket = ws;
+            StringBuilder builder = new(); 
+            String? jdbcProperties = "";   
+            bool firstTime = true;
+            if (Options != null)
+            {
+                Dictionary<Object, Object> options = Options.getOptions();
+                foreach (KeyValuePair<object, object> entry in options)
+                {
+                    if (firstTime)
+                    {
+                        firstTime = false;
+                    }
+                    else
+                    {
+                        builder.Append(';');
+                    }
+                    builder.Append(entry.Key.ToString());
+                    builder.Append('=');
+                    if (entry.Value is List<String>)
+                    {
+                        foreach (var item in (List<String>) entry.Value)
+                        {
+                            bool firstItem = true;
+                            if (!firstItem)
+                            {
+                                builder.Append(',');
+                            }
+                            else
+                            {
+                                firstItem = false;
+                            }
+                            builder.Append(item);
+                        }
+                    }
+                    else
+                    {
+                        builder.Append(entry.Value.ToString());
+                    }
+                }
+                 jdbcProperties = builder.ToString(); 
+            }
+            else
+            {
+                /* No properties send null */
+                jdbcProperties = null;
+            }
+
 
             var connectOptions = new ConnectOptionsRequest(SqlJob.GetNewUniqueId(),
-           "connect", "tcp", "C# client");
+           "connect", "tcp", "C# client", jdbcProperties);
 
             String result;
             try
@@ -426,7 +474,7 @@ namespace io.github.mapepire_ibmi
                     String? error = results.Error;
                     if (error != null)
                     {
-                        throw new Exception(error + " sqlstate=" + results.SqlState);
+                        throw new SqlException(error, 0, results.SqlState);
                     }
                     else
                     {
