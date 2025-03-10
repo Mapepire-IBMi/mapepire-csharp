@@ -227,8 +227,6 @@ namespace io.github.mapepire_ibmi
             this.RowsToFetch = rowsToFetch;
             if (Job == null) throw new Exception("Job is null");
             string result = Job.Send(requestString);
-            // TODO:  fix this
-            Console.WriteLine(result); 
             QueryResult? queryResult ;
             if (!this.IsTerseResults) { 
                 queryResult = JsonSerializer.Deserialize<QueryResult>(result);

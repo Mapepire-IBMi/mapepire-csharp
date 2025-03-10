@@ -89,7 +89,7 @@ public sealed class  ConnectionTests
         Console.WriteLine(successString);
         newJob.SetJtOpenTraceDest(ServerTraceDest.FILE);
         newJob.SetJtOpenTraceLevel(ServerTraceLevel.ON);
-        newJob.setTraceLevel(ServerTraceLevel.ERRORS);
+        newJob.SetTraceLevel(ServerTraceLevel.ERRORS);
         newJob.SetTraceDest(ServerTraceDest.FILE); 
         newJob.SetTraceConfig(ServerTraceDest.FILE,ServerTraceLevel.ON,ServerTraceDest.FILE,ServerTraceLevel.ON);
 

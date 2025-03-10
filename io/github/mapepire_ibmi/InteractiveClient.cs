@@ -53,7 +53,11 @@ public class InteractiveClient {
 	}
 
 	private static void RunQuery(String Line)  {
-        
+        bool showTypes = false; 
+
+        string? envVar = Environment.GetEnvironmentVariable("MAPEPIRE_SHOW_TYPES");
+		if (envVar != null) showTypes=true; 
+
 		int runQueryIndex = Line.ToUpper().IndexOf("RUNQUERY"); 
 
 		Line = Line.Substring(runQueryIndex+8);
@@ -84,8 +88,20 @@ public class InteractiveClient {
 			List<Dictionary<String,Object>>.Enumerator enumerator = data.GetEnumerator(); 
 			while (enumerator.MoveNext()) { 
 				Dictionary<String, Object> hashmap = (Dictionary <String,Object>) enumerator.Current; 
-				columns.ForEach(col=>Console.Write(hashmap.GetValueOrDefault(col.Name ?? throw new Exception("Null column"))+" ")); 
-				Console.WriteLine(); 
+				columns.ForEach(col=>Console.Write(hashmap.GetValueOrDefault(col.Name ?? throw new Exception("Null column"))+" "));
+                Console.WriteLine(); 
+				if (showTypes) {
+				   List<ColumnMetadata>.Enumerator columnEnumerator = columns.GetEnumerator();
+					while (columnEnumerator.MoveNext()) {
+						Object? value = hashmap.GetValueOrDefault(columnEnumerator.Current.Name);
+						if (value == null) { 
+                           Console.Write("null "); 
+						} else {
+							Console.Write(value.GetType().ToString()+" "); 
+						}
+					}
+                    Console.WriteLine(); 
+				}
 			}
 			
 		}

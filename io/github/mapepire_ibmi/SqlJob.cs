@@ -158,7 +158,6 @@ namespace io.github.mapepire_ibmi
                 true,
                 CancellationToken.None);
 
-            /* this.status = JobStatus.Busy; */
             sendTask.Wait();
             var buffer = new byte[100000];
             Task<WebSocketReceiveResult> task = this.socket.ReceiveAsync(new ArraySegment<byte>(buffer),
@@ -205,26 +204,6 @@ namespace io.github.mapepire_ibmi
             }
         }
 
-        /**
-         * Get the current status of the job.
-         *
-         * @return The current status of the job.
-         */
-        /*
-       public JobStatus getStatus() {
-           return this.status;
-       }
-   */
-        /**
-         * Get the count of ongoing requests for the job.
-         *
-         * @return The number of ongoing requests.
-         */
-        /*
-       public int getRunningCount() {
-           return this.responseMap.size();
-       }
-       */
 
         /**
          * Connect to the specified DB2 server and initializes the SQL job.
@@ -234,7 +213,6 @@ namespace io.github.mapepire_ibmi
          */
         public ConnectionResult? Connect(DaemonServer db2Server)
         {
-            /* this.Status = JobStatus.Connecting;  */
             ClientWebSocket ws = this.GetChannel(db2Server);
             this.socket = ws;
             StringBuilder builder = new(); 
@@ -302,13 +280,11 @@ namespace io.github.mapepire_ibmi
 
             if (connectResult != null && connectResult.Success)
             {
-                /* this.status = JobStatus.Ready; */
             }
             else
             {
                 this.Dispose();
-                /* this.status = JobStatus.NotStarted; */
-
+            
                 String? error = "Unknown";
                 if (connectResult != null)
                     error = connectResult.Error;
@@ -554,7 +530,7 @@ namespace io.github.mapepire_ibmi
          * @return A CompletableFuture that resolves to the set config result.
          */
        
-            public SetConfigResult setTraceLevel(ServerTraceLevel level)  {
+            public SetConfigResult SetTraceLevel(ServerTraceLevel level)  {
                 return SetTraceConfig(null, level, null, null);
             }
       
@@ -670,40 +646,6 @@ namespace io.github.mapepire_ibmi
         }
 
         /**
-         * Get the count of pending transactions.
-         *
-         * @return A CompletableFuture that resolves to the count of pending
-         *         transactions.
-         */
-        /*
-       public CompletableFuture<Integer> getPendingTransactions() throws Exception {
-           ObjectMapper objectMapper = SingletonObjectMapper.getInstance();
-           String transactionCountQuery = String.join("\n", Arrays.asList(
-                   "select count(*) as thecount",
-                   "  from qsys2.db_transaction_info",
-                   "  where JOB_NAME = qsys2.job_name and",
-                   "    (local_record_changes_pending = 'YES' or local_object_changes_pending = 'YES')"));
-
-           return this.query(transactionCountQuery).execute(1)
-                   .thenApply(queryResult -> {
-                       if (queryResult.getSuccess() && queryResult.getData() != null
-                               && queryResult.getData().size() == 1) {
-                           String data;
-                           try {
-                               data = objectMapper.writeValueAsString(queryResult.getData().get(0));
-                               Map<String, Object> req = objectMapper.readValue(data, Map.class);
-                               Integer count = (Integer) req.get("THECOUNT");
-                               return count;
-                           } catch (Exception e) {
-                               throw new CompletionException(e);
-                           }
-                       }
-
-                       return 0;
-                   });
-       }
-   */
-        /**
          * Ends the current transaction by committing or rolling back.
          *
          * @param type The type of transaction ending (commit or rollback).
@@ -768,7 +710,7 @@ namespace io.github.mapepire_ibmi
             {
                 this.socket.Dispose();
             }
-            /* this.status = JobStatus.Ended; */
+            
         }
 
 
