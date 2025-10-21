@@ -6,7 +6,6 @@ using io.github.mapepire_ibmi.types;
 namespace UnitTests;
 
 
-
 [TestClass]
 public sealed class  CLTests
 
