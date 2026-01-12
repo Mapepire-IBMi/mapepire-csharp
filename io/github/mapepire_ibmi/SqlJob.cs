@@ -110,20 +110,22 @@ namespace io.github.mapepire_ibmi
         }
 
 public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateValidationCallback(X509Certificate2Collection trustedRoots)
-{
-    if (trustedRoots == null)
-        throw new ArgumentNullException("trustedRoots is null");
-    if (trustedRoots.Count == 0)
-            throw new ArgumentException("trustedRoots have length 0");
-
-    X509Certificate2Collection roots = new X509Certificate2Collection(trustedRoots);
-    
+{    
     return (sender, certificate, chain, policyErrors) =>
     {
         // Missing cert or the destination hostname wasn't valid for the cert.
         if ((policyErrors & ~SslPolicyErrors.RemoteCertificateChainErrors) != 0)
         {
             return false;
+        }
+
+        X509Certificate2Collection roots;
+        if (trustedRoots != null && trustedRoots.Count > 0) {
+            roots = trustedRoots;
+        }
+        // If trustedRoots is null or empty, add the certificate in the validation callback to the trust roots.
+        else {
+            roots = new X509Certificate2Collection((X509Certificate2)certificate);
         }
 
         for (int i = 1; i < chain.ChainElements.Count; i++)
@@ -165,6 +167,10 @@ public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateV
                     X509Certificate2Collection customRootCertificates = new X509Certificate2Collection(customRootCertificate);
                     ws.Options.RemoteCertificateValidationCallback = CreateCustomRemoteCertificateValidationCallback(customRootCertificates);
 
+                }
+                // If ca is not set on DaemonServer, call CreateCustomRemoteCertificateValidationCallback using an empty certificate collection.
+                else {
+                    ws.Options.RemoteCertificateValidationCallback = CreateCustomRemoteCertificateValidationCallback(new X509Certificate2Collection());
                 }
             }
             Task result = ws.ConnectAsync(uri, CancellationToken.None);
