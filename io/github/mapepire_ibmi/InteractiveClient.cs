@@ -10,24 +10,15 @@ public class InteractiveClient {
 	public static void Main(string[] args) {
 
 		Console.WriteLine("Running interactive MapepireClient");
-		try {
-			
-			string? line = Console.ReadLine();
-			bool running = true;
-			while (line != null && running) {
-				running = ProcessLine(line);
-				line = Console.ReadLine();
-			}
-
-		} catch (Exception e) {
-			Console.WriteLine("Severe failure");
-			Console.WriteLine(e.StackTrace);
-		}
+		while (ProcessLine());
 	}
 
-	private static bool ProcessLine(string line) {
-
-		try { 
+	private static bool ProcessLine() {
+		string? line = null;
+		try {
+		line = Console.ReadLine();
+		if (line == null) return false;
+		
 		string[] lineElements = splitLine(line);
 		if (lineElements.Length > 0) {
             string command = lineElements[0].ToLowerInvariant(); 
