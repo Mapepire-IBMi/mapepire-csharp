@@ -55,6 +55,10 @@ public sealed class ProcedureTest
 
         DaemonServer daemonServer = MapepireTest.GetTestDaemonServer();
         string successString = "connection created using (" + MapepireTest.host + "," + MapepireTest.port + "," + MapepireTest.user + ",*******)";
+        Console.WriteLine("Host: " + daemonServer.Host);
+        Console.WriteLine("Port: " + daemonServer.Port);
+        Console.WriteLine("User: " + daemonServer.User);
+
         SqlJob job = new();
         ConnectionResult? cr = job.Connect(daemonServer);
 
