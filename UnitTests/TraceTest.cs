@@ -73,7 +73,13 @@ public sealed class  TraceTest
         SqlJob job = new(); 
 		ConnectionResult? cr = job.Connect(daemonServer);
      
-        job.SetTraceLevel(level);
+        // If the config result indicates that tracing is not enabled at the server side,
+        // then set traceExists to false.
+        SetConfigResult configResult = job.SetTraceLevel(level);
+        if (configResult.JtOpenTraceLevel?.ToUpper() == "OFF") {
+            traceExists = false;
+        }
+
         Query query = job.Query(sql);
 
             try {
