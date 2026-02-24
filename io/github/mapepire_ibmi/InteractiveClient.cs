@@ -16,25 +16,29 @@ public class InteractiveClient {
 	private static bool ProcessLine() {
 		string? line = null;
 		try {
-		line = Console.ReadLine();
-		if (line == null) return false;
-		
-		string[] lineElements = splitLine(line);
-		if (lineElements.Length > 0) {
-            string command = lineElements[0].ToLowerInvariant(); 
-			if ("connect".Equals(command)) {
-				connect(lineElements);
-			} else if ("runquery".Equals(command)) {
-				RunQuery(line);
-			} else if ("help".Equals(command)) {
-				ProcessHelp(); 
-			} else if ("exit".Equals(command)) {
-				return false;
-			} else {
-				Console.WriteLine("Did not recognize command: " + line);
-				ProcessHelp();
-			}
-		}
+		    line = Console.ReadLine();
+		    if (line == null) return false;
+
+		    string[] lineElements = splitLine(line);
+		    if (lineElements.Length > 0) {
+                string command = lineElements[0].ToLowerInvariant(); 
+			    if ("connect".Equals(command)) {
+				    if (lineElements.Length == 2) {
+					    connect(lineElements[1]);
+				    } else {
+					    connect(lineElements);
+				    }
+			    } else if ("runquery".Equals(command)) {
+				    RunQuery(line);
+			    } else if ("help".Equals(command)) {
+				    ProcessHelp(); 
+			    } else if ("exit".Equals(command)) {
+				    return false;
+			    } else {
+				    Console.WriteLine("Did not recognize command: " + line);
+				    ProcessHelp();
+			    }
+		    }
 		} catch (Exception e) { 
 			Console.WriteLine("Error processing "+line); 
             Console.WriteLine(e.ToString());
@@ -104,7 +108,8 @@ public class InteractiveClient {
 	}
 
 	private static void ProcessHelp() {
-		Console.WriteLine("Possible commands"); 
+		Console.WriteLine("Possible commands:");
+		Console.WriteLine("connect configFile"); 
 		Console.WriteLine("connect host port user password validateCA CA");
 		Console.WriteLine("runQuery QUERY");
 		Console.WriteLine("help"); 
@@ -112,11 +117,104 @@ public class InteractiveClient {
 		
 	}
 
+	private static void connect(string configFilePath) {
+		string host = "";
+		int port = 8076;
+		string user = "";
+		string password = "";
+		bool rejectUnauthorized = true;
+		string ca = "";
+		try {
+			string[] lines = File.ReadAllLines(configFilePath);
+			
+			// Get the position of the = sign within each line
+			var pairs = lines.Select(l => new { Line = l, Pos = l.IndexOf("=") });
+
+			// Build a dictionary of key/value pairs by splitting the string at the = sign
+			Dictionary<string, string> dictionary = pairs.ToDictionary(
+				p => p.Line.Substring(0, p.Pos).Trim(), 
+				p => p.Line.Substring(p.Pos + 1).Trim());
+
+			foreach (KeyValuePair<string, string> entry in dictionary) {
+				switch (entry.Key.ToLower()) {
+					case "host":
+						host = entry.Value;
+						break;
+					case "port":
+						port = Int32.Parse(entry.Value);
+						break;
+					case "user":
+						user = entry.Value;
+						break;
+					case "password":
+						password = entry.Value;
+						break;
+					case "rejectunauthorized":
+						rejectUnauthorized = Boolean.Parse(entry.Value);
+						break;
+					case "ca":
+						ca = entry.Value;
+						break;
+					default:
+					    Console.WriteLine("Invalid parameter in configuration file: " + entry.Key);
+						break;
+				}
+			}
+
+		}
+		catch (Exception ex) {
+			if (ex is FileNotFoundException || ex is DirectoryNotFoundException) {
+				Console.WriteLine("Configuration file is not found: " + configFilePath);
+			}
+			else {
+				Console.WriteLine("Exception thrown when reading configuration file");
+				Console.WriteLine("Exception message: " + ex.Message);
+			}
+			return;
+		}
+
+		connect(host, port, user, password, rejectUnauthorized, ca);
+
+	}
+
+	private static void connect(String host, int port, String user, String password, 
+		bool rejectUnauthorized, String ca) {
+
+		if (host == "" || user == "" || password == "") {
+			if (host == "") {
+				Console.WriteLine("Missing parameter: host");
+			}
+			else if (user == "") {
+				Console.WriteLine("Missing parameter: user");
+			}
+			else if (password == "") {
+				Console.WriteLine("Missing parameter: password");
+			}
+			return;
+		}
+
+		DaemonServer newDaemonServer = new DaemonServer(host, port, user, password, rejectUnauthorized,
+			ca != "" ? ca : null);
+		string successString  = "connection created using (" + host + "," + port + "," + user + ",*******,"
+					+ rejectUnauthorized + "," + ca + ")";
+	    daemonServer = newDaemonServer;
+		SqlJob newJob = new SqlJob(); 
+		ConnectionResult? cr = newJob.Connect(daemonServer);
+		Console.WriteLine(successString);
+        Console.WriteLine("JOB ="+newJob.Id);
+
+		if (job != null) { 
+			job.Close(); 
+		}
+		job = newJob; 
+
+	}
+
 	private static void connect(string[] lineElements) {
 
 		int elementCount = lineElements.Length;
 		string host  = "";
-		int port = 0;
+		int port = 8076;
 		string user = "";
 		string password = "";
 		bool rejectUnauthorized = true;
@@ -134,32 +232,8 @@ public class InteractiveClient {
 			rejectUnauthorized = Boolean.Parse(lineElements[5]);
 		if (elementCount > 6)
 			ca = lineElements[6];
-		DaemonServer newDaemonServer ;
-		String successString; 
-		if (elementCount <= 5) {
-			newDaemonServer = new DaemonServer(host, port, user, password);
-			successString  = "connection created using (" + host + "," + port + "," + user + ",*******)";
-		} else if (elementCount == 6) {
-			newDaemonServer = new DaemonServer(host, port, user, password, rejectUnauthorized, null);
-			successString  = "connection created using (" + host + "," + port + "," + user + ",*******,"
-					+ rejectUnauthorized + ")";
-		} else {
-			newDaemonServer = new DaemonServer(host, port, user, password, rejectUnauthorized, ca);
-			successString  = "connection created using (" + host + "," + port + "," + user + ",*******,"
-					+ rejectUnauthorized + "," + ca + ")";
-		}
-		daemonServer = newDaemonServer;
-		SqlJob newJob = new SqlJob(); 
-		ConnectionResult? cr = newJob.Connect(daemonServer);
-		Console.WriteLine(successString);
-        Console.WriteLine("JOB ="+newJob.Id);
-
-		if (job != null) { 
-			job.Close(); 
-		}
-		job = newJob; 
-		 
-         
+		
+		connect(host, port, user, password, rejectUnauthorized, ca);
 	}
 
 	private static string[] splitLine(String line) {
