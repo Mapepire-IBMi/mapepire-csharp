@@ -55,12 +55,32 @@ public sealed class ProcedureTest
 
         DaemonServer daemonServer = MapepireTest.GetTestDaemonServer();
         string successString = "connection created using (" + MapepireTest.host + "," + MapepireTest.port + "," + MapepireTest.user + ",*******)";
-        Console.WriteLine("Host: " + daemonServer.Host);
-        Console.WriteLine("Port: " + daemonServer.Port);
-        Console.WriteLine("User: " + daemonServer.User);
-
         SqlJob job = new();
         ConnectionResult? cr = job.Connect(daemonServer);
+
+        Query query1 = job.Query("SELECT LOCAL_HOST_NAME FROM QSYS2.TCPIP_INFO");
+        QueryResult result1 = query1.Execute();
+        List<Dictionary<String,Object>>? data = result1.Data;
+        
+        if (data?.Count > 0) {
+            List<ColumnMetadata>? columns = result1.Metadata?.Columns;
+            Dictionary<String, Object> hashmap = data.ElementAt(0);
+            string? key = columns?.ElementAt(0)?.Name;
+            Console.WriteLine("Host name: " + hashmap.GetValueOrDefault(key ?? throw new Exception("Null column")));
+        }
+        query1.Close();
+
+        Query query2 = job.Query("VALUES CURRENT USER");
+        QueryResult result2 = query2.Execute();
+        data = result2.Data;
+        
+        if (data?.Count > 0) {
+            List<ColumnMetadata>? columns = result2.Metadata?.Columns;
+            Dictionary<String, Object> hashmap = data.ElementAt(0);
+            string? key = columns?.ElementAt(0)?.Name;
+            Console.WriteLine("Current user: " + hashmap.GetValueOrDefault(key ?? throw new Exception("Null column")));
+        }
+        query2.Close();
 
         String testProc = "CREATE OR REPLACE PROCEDURE " + TestSchema + ".PROCEDURE_TEST("
                         + "  IN P1 INTEGER,"
