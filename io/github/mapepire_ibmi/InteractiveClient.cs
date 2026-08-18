@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using io.github.mapepire_ibmi.types;
 
 namespace io.github.mapepire_ibmi { 
@@ -75,29 +76,8 @@ public class InteractiveClient {
 			if (data == null) throw new Exception("NULL data"); 
 			Console.WriteLine(" rows returned = "+data.Count+" isDone="+result.IsDone);
             List<ColumnMetadata>? columns = metadata.Columns ?? throw new Exception("NULL column");
-                
-			columns.ForEach(col=>Console.Write(col.Name+" ")); 
-			Console.WriteLine(); 
-			
 
-			List<Dictionary<String,Object>>.Enumerator enumerator = data.GetEnumerator(); 
-			while (enumerator.MoveNext()) { 
-				Dictionary<String, Object> hashmap = (Dictionary <String,Object>) enumerator.Current; 
-				columns.ForEach(col=>Console.Write(hashmap.GetValueOrDefault(col.Name ?? throw new Exception("Null column"))+" "));
-                Console.WriteLine(); 
-				if (showTypes) {
-				   List<ColumnMetadata>.Enumerator columnEnumerator = columns.GetEnumerator();
-					while (columnEnumerator.MoveNext()) {
-						Object? value = hashmap.GetValueOrDefault(columnEnumerator.Current.Name);
-						if (value == null) { 
-                           Console.Write("null "); 
-						} else {
-							Console.Write(value.GetType().ToString()+" "); 
-						}
-					}
-                    Console.WriteLine(); 
-				}
-			}
+			Console.Write(FormatQueryOutput(columns, data, showTypes));
 			
 		}
 		// Close query and job
@@ -105,6 +85,42 @@ public class InteractiveClient {
 
 		
 		
+	}
+
+	private static string FormatQueryOutput(List<ColumnMetadata> columns,
+		List<Dictionary<String, Object>> data, bool showTypes) {
+		List<String> columnNames = columns.Select(column =>
+			column.Name ?? throw new Exception("Null column")).ToList();
+		List<List<String>> outputLines = new List<List<String>> { columnNames };
+
+		foreach (Dictionary<String, Object> row in data) {
+			outputLines.Add(columnNames.Select(name =>
+				row.GetValueOrDefault(name)?.ToString() ?? "").ToList());
+
+			if (showTypes) {
+				outputLines.Add(columnNames.Select(name => {
+					Object? value = row.GetValueOrDefault(name);
+					return value == null ? "null" : value.GetType().ToString();
+				}).ToList());
+			}
+		}
+
+		int[] columnWidths = Enumerable.Range(0, columnNames.Count)
+			.Select(index => outputLines.Max(line => line[index].Length))
+			.ToArray();
+		StringBuilder output = new StringBuilder();
+
+		foreach (List<String> line in outputLines) {
+			for (int index = 0; index < line.Count; index++) {
+				if (index > 0) output.Append(' ');
+				output.Append(index == line.Count - 1
+					? line[index]
+					: line[index].PadRight(columnWidths[index]));
+			}
+			output.AppendLine();
+		}
+
+		return output.ToString();
 	}
 
 	private static void ProcessHelp() {
