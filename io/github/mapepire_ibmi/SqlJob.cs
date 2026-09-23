@@ -685,7 +685,7 @@ public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateV
                 return false;
             }
             return this.Options.getOption(Option.TRANSACTION_ISOLATION) != null
-                    && TransactionIsolation.NONE.Equals(
+                    && !TransactionIsolation.NONE.Equals(
                         this.Options.getOption(Option.TRANSACTION_ISOLATION));
         }
 
