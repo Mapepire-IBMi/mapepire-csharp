@@ -690,6 +690,57 @@ public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateV
         }
 
         /**
+         * Get the count of this job's commitment definitions with pending changes.
+         *
+         * @return The number of pending transactions, or zero if there are none.
+         */
+        public int GetPendingTransactions()
+        {
+            const string transactionCountQuery =
+                "select count(*) as thecount\n" +
+                "  from qsys2.db_transaction_info\n" +
+                "  where JOB_NAME = qsys2.job_name and\n" +
+                "    (local_record_changes_pending = 'YES' or local_object_changes_pending = 'YES')";
+
+            Query query = this.Query(transactionCountQuery);
+            try
+            {
+                QueryResult queryResult = query.Execute(1);
+                if (queryResult.Data == null || queryResult.Data.Count != 1 || queryResult.Data[0] == null ||
+                    !queryResult.Data[0].TryGetValue("THECOUNT", out object? value) || value == null)
+                {
+                    return 0;
+                }
+
+                if (value is JsonElement jsonValue)
+                {
+                    if (jsonValue.ValueKind == JsonValueKind.Null)
+                    {
+                        return 0;
+                    }
+
+                    if (jsonValue.ValueKind == JsonValueKind.Number && jsonValue.TryGetInt32(out int count))
+                    {
+                        return count;
+                    }
+
+                    throw new FormatException("Pending transaction count is not a 32-bit integer");
+                }
+
+                if (value is int integerCount)
+                {
+                    return integerCount;
+                }
+
+                throw new FormatException("Pending transaction count is not a 32-bit integer");
+            }
+            finally
+            {
+                query.RemoveFromGlobalQueryList();
+            }
+        }
+
+        /**
          * Ends the current transaction by committing or rolling back.
          *
          * @param type The type of transaction ending (commit or rollback).
