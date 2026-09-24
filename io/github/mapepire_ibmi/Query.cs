@@ -84,6 +84,14 @@ namespace io.github.mapepire_ibmi
             }
         }
 
+        internal void RemoveFromGlobalQueryList()
+        {
+            lock (GlobalQueryList)
+            {
+                GlobalQueryList.Remove(this);
+            }
+        }
+
         /**
          * Get a Query instance by its correlation ID.
          * 
