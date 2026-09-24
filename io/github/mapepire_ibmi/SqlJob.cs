@@ -9,6 +9,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
 
 namespace io.github.mapepire_ibmi
 {
@@ -26,7 +27,14 @@ namespace io.github.mapepire_ibmi
         /**
          * The socket used to communicate with the Mapepire Server component.
          */
-        private ClientWebSocket? socket;
+        private WebSocket? socket;
+        private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> pendingRequests = new();
+        private readonly SemaphoreSlim sendLock = new(1, 1);
+        private readonly object lifecycleLock = new();
+        private Task? receiveLoop;
+        private Exception? socketFailure;
+        private bool disposed;
+        private long lifecycleGeneration;
 
         /**
          * The server trace data destination.
@@ -73,6 +81,13 @@ namespace io.github.mapepire_ibmi
         public SqlJob(JDBCOptions options)
         {
             this.Options = options;
+        }
+
+        internal SqlJob(WebSocket socket)
+        {
+            this.Options = new JDBCOptions();
+            this.socket = socket ?? throw new ArgumentNullException(nameof(socket));
+            this.StartReceiveLoop(socket);
         }
 
         /**
@@ -194,57 +209,143 @@ public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateV
                 Console.WriteLine("\n>> " + content);
             }
 
-            if (this.socket == null) throw new Exception("NULL SOCKET");
+            using JsonDocument request = JsonDocument.Parse(content);
+            if (!request.RootElement.TryGetProperty("id", out JsonElement idElement)
+                || idElement.ValueKind != JsonValueKind.String
+                || String.IsNullOrEmpty(idElement.GetString()))
+                throw new ArgumentException("Request must contain a non-empty string id", nameof(content));
 
-            Task sendTask = this.socket.SendAsync(
-                Encoding.UTF8.GetBytes(content + "\n"),
-                WebSocketMessageType.Text,
-                true,
-                CancellationToken.None);
-
-            sendTask.Wait();
-            var buffer = new byte[100000];
-            Task<WebSocketReceiveResult> task = this.socket.ReceiveAsync(new ArraySegment<byte>(buffer),
-            CancellationToken.None);
-            task.Wait();
-            WebSocketReceiveResult taskResult = task.Result;
-            if (taskResult.EndOfMessage)
+            string id = idElement.GetString()!;
+            TaskCompletionSource<string> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            WebSocket currentSocket;
+            lock (this.lifecycleLock)
             {
-                return Encoding.UTF8.GetString(buffer, 0, taskResult.Count);
+                if (this.disposed)
+                    throw new ObjectDisposedException(nameof(SqlJob));
+                if (this.socketFailure != null)
+                    throw new WebSocketException("WebSocket is unavailable", this.socketFailure);
+                currentSocket = this.socket ?? throw new Exception("NULL SOCKET");
+                if (!this.pendingRequests.TryAdd(id, completion))
+                    throw new InvalidOperationException($"A request with id '{id}' is already pending");
             }
-            else
-            {
-                List<byte[]> buffers = []; 
-                List<Int32> counts = []; 
-                int totalSize = 0; 
-                int blockSize; 
-                blockSize = taskResult.Count; 
-                // Loop to get all. 
-                while (!taskResult.EndOfMessage) { 
-                    buffers.Add(buffer);
-                    counts.Add(taskResult.Count); 
-                    totalSize += taskResult.Count; 
-                    buffer = new byte[blockSize] ;   
-                    task = this.socket.ReceiveAsync(new ArraySegment<byte>(buffer),
-            CancellationToken.None);
-                    task.Wait();
-                    taskResult = task.Result;
-                    
-                }
-                // Put the rest into the buffer
-                buffers.Add(buffer);
-                counts.Add(taskResult.Count); 
-                totalSize += taskResult.Count; 
-                    
-                // Put into 1 buffer; 
-                buffer = new byte[totalSize];
-                int offset = 0; 
-                for (int i = 0; i < buffers.Count; i++) { 
-                    System.Buffer.BlockCopy(buffers[i], 0, buffer, offset, counts[i]);
-                    offset += counts[i]; 
-                } 
-                return Encoding.UTF8.GetString(buffer, 0, totalSize); 
 
+            try
+            {
+                this.sendLock.Wait();
+                try
+                {
+                    if (this.pendingRequests.TryGetValue(id, out TaskCompletionSource<string>? current)
+                        && ReferenceEquals(current, completion))
+                    {
+                        currentSocket.SendAsync(Encoding.UTF8.GetBytes(content + "\n"),
+                            WebSocketMessageType.Text, true, CancellationToken.None).GetAwaiter().GetResult();
+                    }
+                }
+                finally
+                {
+                    this.sendLock.Release();
+                }
+            }
+            catch (Exception ex)
+            {
+                this.MarkSocketFailed(currentSocket, ex);
+            }
+
+            return completion.Task.GetAwaiter().GetResult();
+        }
+
+        private void StartReceiveLoop(WebSocket socket)
+        {
+            this.receiveLoop = Task.Run(() => this.ReceiveLoopAsync(socket));
+        }
+
+        private async Task ReceiveLoopAsync(WebSocket currentSocket)
+        {
+            Exception? failure = null;
+            try
+            {
+                byte[] buffer = new byte[8192];
+                while (true)
+                {
+                    using MemoryStream message = new();
+                    WebSocketReceiveResult result;
+                    do
+                    {
+                        result = await currentSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None).ConfigureAwait(false);
+                        if (result.MessageType == WebSocketMessageType.Close)
+                            throw new WebSocketException("WebSocket closed by the remote endpoint");
+                        message.Write(buffer, 0, result.Count);
+                    } while (!result.EndOfMessage);
+
+                    using JsonDocument response = JsonDocument.Parse(message.ToArray());
+                    if (!response.RootElement.TryGetProperty("id", out JsonElement responseId)
+                        || responseId.ValueKind != JsonValueKind.String)
+                        continue;
+
+                    string? id = responseId.GetString();
+                    if (id != null && this.pendingRequests.TryRemove(id, out TaskCompletionSource<string>? completion))
+                    {
+                        string content = Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
+                        completion.TrySetResult(content);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                Exception terminalFailure = failure ?? new WebSocketException("WebSocket receive loop stopped");
+                this.MarkSocketFailed(currentSocket, terminalFailure);
+            }
+        }
+
+        private void MarkSocketFailed(WebSocket failedSocket, Exception exception)
+        {
+            bool shouldAbort = false;
+            lock (this.lifecycleLock)
+            {
+                if (ReferenceEquals(this.socket, failedSocket) && this.socketFailure == null)
+                {
+                    this.socketFailure = exception;
+                    this.FailPendingRequests(exception);
+                    shouldAbort = true;
+                }
+            }
+
+            // Abort outside the lifecycle lock: it releases a receive loop blocked on
+            // ReceiveAsync without preventing a concurrent reconnect from taking the lock.
+            if (shouldAbort)
+            {
+                try
+                {
+                    failedSocket.Abort();
+                }
+                catch
+                {
+                    // The socket is already terminal; disposal still needs to run.
+                }
+                finally
+                {
+                    try
+                    {
+                        failedSocket.Dispose();
+                    }
+                    catch
+                    {
+                        // Pending requests have already been failed above.
+                    }
+                }
+            }
+        }
+
+        private void FailPendingRequests(Exception exception)
+        {
+            foreach (KeyValuePair<string, TaskCompletionSource<string>> pending in this.pendingRequests)
+            {
+                if (((ICollection<KeyValuePair<string, TaskCompletionSource<string>>>)this.pendingRequests).Remove(pending))
+                    pending.Value.TrySetException(exception);
             }
         }
 
@@ -257,8 +358,30 @@ public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateV
          */
         public ConnectionResult? Connect(DaemonServer db2Server)
         {
+            long connectGeneration;
+            lock (this.lifecycleLock)
+            {
+                connectGeneration = this.lifecycleGeneration;
+            }
+
             ClientWebSocket ws = this.GetChannel(db2Server);
-            this.socket = ws;
+            WebSocket? previousSocket;
+            lock (this.lifecycleLock)
+            {
+                if (connectGeneration != this.lifecycleGeneration)
+                {
+                    ws.Dispose();
+                    throw new WebSocketException("Connection attempt was superseded by Close");
+                }
+
+                previousSocket = this.socket;
+                this.FailPendingRequests(new WebSocketException("Connection replaced"));
+                this.disposed = false;
+                this.socket = ws;
+                this.socketFailure = null;
+                this.StartReceiveLoop(ws);
+            }
+            previousSocket?.Dispose();
             StringBuilder builder = new(); 
             String? jdbcProperties = "";   
             bool firstTime = true;
@@ -750,11 +873,18 @@ public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateV
          */
         private void Dispose()
         {
-            if (this.socket != null)
+            WebSocket? currentSocket;
+            lock (this.lifecycleLock)
             {
-                this.socket.Dispose();
+                this.lifecycleGeneration++;
+                if (this.disposed)
+                    return;
+                this.disposed = true;
+                this.socketFailure = new ObjectDisposedException(nameof(SqlJob));
+                this.FailPendingRequests(this.socketFailure);
+                currentSocket = this.socket;
             }
-            
+            currentSocket?.Dispose();
         }
 
 
