@@ -14,4 +14,8 @@
 <OutputType>Exe</OutputType>
 </PropertyGroup>
 
+<ItemGroup>
+    <InternalsVisibleTo Include="UnitTests" />
+</ItemGroup>
+
 </Project>
