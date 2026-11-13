@@ -50,8 +50,8 @@ public sealed class MapepireConnection : DbConnection
         }
     }
 
-    /// <summary>The parsed connection settings.</summary>
-    public MapepireConnectionStringBuilder Settings => _settings;
+    /// <summary>A snapshot of the parsed connection settings. To configure the connection, set <see cref="ConnectionString"/>.</summary>
+    public MapepireConnectionStringBuilder Settings => new(_settings.ConnectionString);
 
     /// <summary>The default schema, as given by <c>Default Schema</c> in the connection string.</summary>
     public override string Database => _currentSchema ?? _settings.DefaultSchema ?? string.Empty;
