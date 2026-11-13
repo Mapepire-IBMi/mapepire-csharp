@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore.Storage.Internal;
-
 namespace Mapepire.EntityFrameworkCore.Storage.Internal;
 
 /// <summary>SQL generation helpers for Db2 for i (double-quoted identifiers, <c>@name</c> parameters).</summary>
@@ -31,7 +29,7 @@ public class MapepireDatabaseCreator(
     public override bool Exists()
     {
         var schema = GetConfiguredSchema();
-        if (schema == null)
+        if (schema is null)
         {
             // Without a configured schema the user profile's default schema is used; it exists if we can connect.
             return CanConnect();
@@ -84,7 +82,7 @@ public class MapepireDatabaseCreator(
                 "Deleting a database requires 'Default Schema' in the connection string. On Db2 for i the schema (library) is dropped.");
 
         // Pooled server jobs that have the library in their library list keep it in use (SQL0913).
-        MapepireConnection.ClearPools(b => b.DefaultSchema != null && NormalizeSchemaName(b.DefaultSchema) == schema);
+        MapepireConnection.ClearPools(builder => builder.DefaultSchema is not null && NormalizeSchemaName(builder.DefaultSchema) == schema);
 
         using var connection = new MapepireConnection(CreateAdminConnectionString());
         connection.Open();
@@ -116,11 +114,24 @@ public class MapepireDatabaseCreator(
     public override bool HasTables()
     {
         var schema = GetConfiguredSchema();
-        var predicate = schema == null ? "CURRENT SCHEMA" : Literal(schema);
+        var predicate = schema is null ? "CURRENT SCHEMA" : Literal(schema);
         var count = ExecuteScalar(
             $"SELECT COUNT(*) FROM QSYS2.SYSTABLES WHERE TABLE_SCHEMA = {predicate} AND TABLE_TYPE IN ('T', 'P')");
         return Convert.ToInt64(count) > 0;
     }
+
+    /// <summary>
+    /// Unquoted schema names are folded to upper case, as the IBM i library list does; quoted names keep their case.
+    /// </summary>
+    internal static string NormalizeSchemaName(string schema)
+    {
+        schema = schema.Trim();
+        return schema.Length > 1 && schema[0] == '"' && schema[^1] == '"'
+            ? schema[1..^1].Replace("\"\"", "\"")
+            : schema.ToUpperInvariant();
+    }
+
+    private static string Literal(string value) => "'" + value.Replace("'", "''") + "'";
 
     private object? ExecuteScalar(string sql)
         => rawSqlCommandBuilder.Build(sql).ExecuteScalar(
@@ -158,17 +169,4 @@ public class MapepireDatabaseCreator(
         var schema = new MapepireConnectionStringBuilder(Dependencies.Connection.ConnectionString).DefaultSchema;
         return string.IsNullOrWhiteSpace(schema) ? null : NormalizeSchemaName(schema);
     }
-
-    /// <summary>
-    /// Unquoted schema names are folded to upper case, as the IBM i library list does; quoted names keep their case.
-    /// </summary>
-    internal static string NormalizeSchemaName(string schema)
-    {
-        schema = schema.Trim();
-        return schema.Length > 1 && schema[0] == '"' && schema[^1] == '"'
-            ? schema[1..^1].Replace("\"\"", "\"")
-            : schema.ToUpperInvariant();
-    }
-
-    private static string Literal(string value) => "'" + value.Replace("'", "''") + "'";
 }

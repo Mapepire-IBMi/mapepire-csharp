@@ -6,6 +6,7 @@ namespace Mapepire.Data;
 public sealed class MapepireFactory : DbProviderFactory
 {
     /// <summary>The singleton instance.</summary>
+    // A public field rather than a property: DbProviderFactories looks up a static field named "Instance".
     public static readonly MapepireFactory Instance = new();
 
     private MapepireFactory()

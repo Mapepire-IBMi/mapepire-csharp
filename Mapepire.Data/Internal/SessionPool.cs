@@ -9,11 +9,22 @@ namespace Mapepire.Data.Internal;
 /// </summary>
 internal static class SessionPool
 {
-    private static readonly ConcurrentDictionary<string, ConcurrentQueue<ServerSession>> Pools = new();
+    // Shared by every thread in the process. The concurrent collections make each operation safe on its
+    // own; the size check in Return is not atomic with the enqueue, so the pool can briefly exceed
+    // Max Pool Size by the number of threads returning sessions at the same moment.
+    private static readonly ConcurrentDictionary<string, ConcurrentQueue<ServerSession>> s_pools = new();
 
-    public static ServerSession Rent(string key, MapepireConnectionStringBuilder settings)
+    /// <summary>
+    /// Takes an idle session for the connection string, or opens a new one. Sessions that are broken, or idle
+    /// for longer than <see cref="MapepireConnectionStringBuilder.IdleValidationSeconds"/> and no longer
+    /// answering, are discarded.
+    /// </summary>
+    /// <param name="connectionString">The connection string; it identifies the pool.</param>
+    /// <param name="settings">The parsed connection string.</param>
+    /// <returns>An open session.</returns>
+    public static ServerSession Rent(string connectionString, MapepireConnectionStringBuilder settings)
     {
-        if (settings.Pooling && Pools.TryGetValue(key, out var queue))
+        if (settings.Pooling && s_pools.TryGetValue(connectionString, out var queue))
         {
             while (queue.TryDequeue(out var session))
             {
@@ -24,7 +35,7 @@ internal static class SessionPool
                 }
 
                 var idle = DateTime.UtcNow - session.LastUsedUtc;
-                if (idle.TotalSeconds > settings.IdleValidationSeconds && !session.Validate())
+                if (idle.TotalSeconds > settings.IdleValidationSeconds && !session.IsAlive())
                 {
                     session.Dispose();
                     continue;
@@ -37,7 +48,14 @@ internal static class SessionPool
         return ServerSession.Open(settings);
     }
 
-    public static void Return(string key, MapepireConnectionStringBuilder settings, ServerSession session)
+    /// <summary>
+    /// Returns a session to its pool. The session is closed instead when pooling is off, the session is broken,
+    /// or the pool is full.
+    /// </summary>
+    /// <param name="connectionString">The connection string; it identifies the pool.</param>
+    /// <param name="settings">The parsed connection string.</param>
+    /// <param name="session">The session to return.</param>
+    public static void Return(string connectionString, MapepireConnectionStringBuilder settings, ServerSession session)
     {
         if (!settings.Pooling || session.IsBroken)
         {
@@ -45,7 +63,7 @@ internal static class SessionPool
             return;
         }
 
-        var queue = Pools.GetOrAdd(key, _ => new ConcurrentQueue<ServerSession>());
+        var queue = s_pools.GetOrAdd(connectionString, _ => new ConcurrentQueue<ServerSession>());
         if (queue.Count >= settings.MaxPoolSize)
         {
             session.Dispose();
@@ -55,9 +73,11 @@ internal static class SessionPool
         queue.Enqueue(session);
     }
 
-    public static void Clear(string key)
+    /// <summary>Closes the idle sessions of one connection string.</summary>
+    /// <param name="connectionString">The connection string; it identifies the pool.</param>
+    public static void Clear(string connectionString)
     {
-        if (Pools.TryRemove(key, out var queue))
+        if (s_pools.TryRemove(connectionString, out var queue))
         {
             while (queue.TryDequeue(out var session))
             {
@@ -66,22 +86,25 @@ internal static class SessionPool
         }
     }
 
+    /// <summary>Closes the idle sessions of every connection string matching <paramref name="predicate"/>.</summary>
+    /// <param name="predicate">Selects the connection strings to clear.</param>
     public static void Clear(Func<MapepireConnectionStringBuilder, bool> predicate)
     {
-        foreach (var key in Pools.Keys)
+        foreach (var connectionString in s_pools.Keys)
         {
-            if (predicate(new MapepireConnectionStringBuilder(key)))
+            if (predicate(new MapepireConnectionStringBuilder(connectionString)))
             {
-                Clear(key);
+                Clear(connectionString);
             }
         }
     }
 
+    /// <summary>Closes the idle sessions of every connection string.</summary>
     public static void ClearAll()
     {
-        foreach (var key in Pools.Keys)
+        foreach (var connectionString in s_pools.Keys)
         {
-            Clear(key);
+            Clear(connectionString);
         }
     }
 }

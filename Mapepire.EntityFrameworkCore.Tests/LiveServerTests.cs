@@ -1,6 +1,6 @@
-using Mapepire.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Mapepire.Data;
 
 namespace Mapepire.EntityFrameworkCore.Tests;
 
@@ -13,10 +13,16 @@ namespace Mapepire.EntityFrameworkCore.Tests;
 [DoNotParallelize]
 public sealed class LiveServerTests
 {
-    private static string? _baseConnectionString;
-    private static string? _schema;
-    private static string? _skipReason;
+    // Written once by ClassInitialize before any test runs, then only read. The class is [DoNotParallelize],
+    // and MSTest runs ClassInitialize to completion before starting the class's tests.
+    private static string? s_baseConnectionString;
+    private static string? s_schema;
+    private static string? s_skipReason;
 
+    /// <summary>
+    /// Reads the server settings and creates a fresh schema for this run. Records why the tests are skipped
+    /// when no server is configured or reachable.
+    /// </summary>
     [ClassInitialize]
     public static void ClassInitialize(TestContext _)
     {
@@ -29,7 +35,7 @@ public sealed class LiveServerTests
         var host = config["MAPEPIRE_HOST"];
         if (string.IsNullOrWhiteSpace(host))
         {
-            _skipReason = "MAPEPIRE_HOST is not configured.";
+            s_skipReason = "MAPEPIRE_HOST is not configured.";
             return;
         }
 
@@ -41,8 +47,8 @@ public sealed class LiveServerTests
             Password = config["MAPEPIRE_PASSWORD"],
             RejectUnauthorized = false,
         };
-        _baseConnectionString = builder.ConnectionString;
-        _schema = "MPEF" + Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
+        s_baseConnectionString = builder.ConnectionString;
+        s_schema = "MPEF" + Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
 
         try
         {
@@ -52,14 +58,15 @@ public sealed class LiveServerTests
         }
         catch (MapepireException ex) when (ex.InnerException is not null && ex.SqlState is null)
         {
-            _skipReason = "Mapepire server not reachable: " + ex.Message;
+            s_skipReason = "Mapepire server not reachable: " + ex.Message;
         }
     }
 
+    /// <summary>Drops this run's schema and closes all pooled connections.</summary>
     [ClassCleanup]
     public static void ClassCleanup()
     {
-        if (_skipReason == null && _baseConnectionString != null)
+        if (s_skipReason is null && s_baseConnectionString is not null)
         {
             using var context = CreateContext(autoCommit: false);
             context.Database.EnsureDeleted();
@@ -68,24 +75,9 @@ public sealed class LiveServerTests
         MapepireConnection.ClearAllPools();
     }
 
-    private static BloggingContext CreateContext(bool autoCommit)
-    {
-        var builder = new MapepireConnectionStringBuilder(_baseConnectionString) { DefaultSchema = _schema, AutoCommit = autoCommit };
-        return BloggingContext.Create(builder.ConnectionString, Console.WriteLine);
-    }
-
-    private static BloggingContext Context(bool autoCommit = false)
-    {
-        if (_skipReason != null)
-        {
-            Assert.Inconclusive(_skipReason);
-        }
-
-        return CreateContext(autoCommit);
-    }
-
+    /// <summary>SaveChanges reads identity keys back through FINAL TABLE, and every mapped type survives a round trip.</summary>
     [TestMethod]
-    public void Insert_generates_keys_and_query_round_trips_values()
+    public void InsertGeneratesKeysAndQueryRoundTripsValues()
     {
         var created = new DateTime(2024, 5, 6, 7, 8, 9).AddTicks(1234560);
         int blogId;
@@ -125,8 +117,9 @@ public sealed class LiveServerTests
         }
     }
 
+    /// <summary>Boolean filters, paging, Any, Count and translated string functions run on the server and return the right rows.</summary>
     [TestMethod]
-    public void Queries_with_predicates_paging_and_functions()
+    public void QueriesWithPredicatesPagingAndFunctions()
     {
         using (var context = Context())
         {
@@ -159,8 +152,9 @@ public sealed class LiveServerTests
         }
     }
 
+    /// <summary>Updates and deletes affect the right row, and a concurrent change raises DbUpdateConcurrencyException.</summary>
     [TestMethod]
-    public void Update_delete_and_concurrency_check()
+    public void UpdateDeleteAndConcurrencyCheck()
     {
         int postId;
         using (var context = Context())
@@ -202,8 +196,9 @@ public sealed class LiveServerTests
         }
     }
 
+    /// <summary>With Auto Commit=false, a SaveChanges that fails part-way leaves none of its rows behind.</summary>
     [TestMethod]
-    public void Failed_save_rolls_back_whole_unit_of_work()
+    public void FailedSaveRollsBackWholeUnitOfWork()
     {
         using (var context = Context())
         {
@@ -224,8 +219,9 @@ public sealed class LiveServerTests
         }
     }
 
+    /// <summary>Client-generated Guid keys work, and multi-row saves succeed in auto-commit mode.</summary>
     [TestMethod]
-    public void Guid_keys_and_auto_commit_mode()
+    public void GuidKeysAndAutoCommitMode()
     {
         var id = Guid.NewGuid();
         using (var context = Context(autoCommit: true))
@@ -241,15 +237,16 @@ public sealed class LiveServerTests
         }
     }
 
+    /// <summary>The ADO.NET reader fetches a result larger than the fetch size across several round trips, in order.</summary>
     [TestMethod]
-    public void Ado_net_reader_pages_through_large_results()
+    public void AdoNetReaderPagesThroughLargeResults()
     {
-        if (_skipReason != null)
+        if (s_skipReason is not null)
         {
-            Assert.Inconclusive(_skipReason);
+            Assert.Inconclusive(s_skipReason);
         }
 
-        using var connection = new MapepireConnection(_baseConnectionString + ";Fetch Size=7");
+        using var connection = new MapepireConnection(s_baseConnectionString + ";Fetch Size=7");
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -264,5 +261,22 @@ public sealed class LiveServerTests
         }
 
         Assert.AreEqual(50, count);
+    }
+
+    private static BloggingContext CreateContext(bool autoCommit)
+    {
+        var builder = new MapepireConnectionStringBuilder(s_baseConnectionString) { DefaultSchema = s_schema, AutoCommit = autoCommit };
+        return BloggingContext.Create(builder.ConnectionString, Console.WriteLine);
+    }
+
+    /// <summary>Creates a context on this run's schema, or marks the test inconclusive when there is no server.</summary>
+    private static BloggingContext Context(bool autoCommit = false)
+    {
+        if (s_skipReason is not null)
+        {
+            Assert.Inconclusive(s_skipReason);
+        }
+
+        return CreateContext(autoCommit);
     }
 }

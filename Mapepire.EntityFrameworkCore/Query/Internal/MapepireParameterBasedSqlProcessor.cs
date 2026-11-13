@@ -44,6 +44,10 @@ internal sealed class LimitOffsetInliningExpressionVisitor(
 {
     private bool _canCache = true;
 
+    /// <summary>Rewrites every SELECT in the query.</summary>
+    /// <param name="expression">The query.</param>
+    /// <param name="canCache">False if any value was inlined, because the SQL then depends on parameter values.</param>
+    /// <returns>The rewritten query.</returns>
     public Expression Process(Expression expression, out bool canCache)
     {
         var result = Visit(expression);
@@ -51,10 +55,11 @@ internal sealed class LimitOffsetInliningExpressionVisitor(
         return result;
     }
 
+    /// <summary>Inlines the OFFSET and FETCH values of a SELECT, after rewriting its nested SELECTs.</summary>
     protected override Expression VisitExtension(Expression node)
     {
         var visited = base.VisitExtension(node);
-        if (visited is not SelectExpression select || (select.Offset == null && select.Limit == null))
+        if (visited is not SelectExpression select || (select.Offset is null && select.Limit is null))
         {
             return visited;
         }
@@ -93,6 +98,9 @@ internal sealed class LimitOffsetInliningExpressionVisitor(
                 limit);
     }
 
+    /// <summary>Replaces an integer parameter with a literal of its current value.</summary>
+    /// <param name="expression">The OFFSET or FETCH expression, if any.</param>
+    /// <returns>The literal, or the expression unchanged if it is not an integer parameter.</returns>
     private SqlExpression? Inline(SqlExpression? expression)
     {
         if (expression is SqlParameterExpression parameter

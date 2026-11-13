@@ -8,10 +8,6 @@
 // rewrites value-in-condition positions to "x = 1" and condition-in-value positions to CASE WHEN.
 
 using System.Diagnostics;
-using System.Linq.Expressions;
-using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Query;
-using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 
 namespace Mapepire.EntityFrameworkCore.Query.Internal;
 
@@ -72,6 +68,10 @@ public class MapepireSearchConditionConvertingExpressionVisitor : SqlExpressionV
                 sqlExpression,
                 _sqlExpressionFactory.Constant(true));
 
+    /// <summary>
+    /// Rewrites <c>NOT (a = b)</c> to <c>a &lt;&gt; b</c>, and <c>NOT (a = TRUE)</c> to <c>a = FALSE</c>, so negated
+    /// comparisons do not need an extra NOT. Other expressions are returned unchanged.
+    /// </summary>
     private SqlExpression SimplifyNegatedBinary(SqlExpression sqlExpression)
     {
         if (sqlExpression is SqlUnaryExpression { OperatorType: ExpressionType.Not } sqlUnaryExpression
@@ -116,6 +116,36 @@ public class MapepireSearchConditionConvertingExpressionVisitor : SqlExpressionV
     }
 
     /// <summary>
+    /// Visits each expression in a list; returns the original list if nothing changed. (Mapepire: replaces
+    /// EF Core's internal <c>ExpressionVisitorExtensions.VisitAndConvert</c>, which is not available to providers.)
+    /// </summary>
+    private IReadOnlyList<T> VisitList<T>(IReadOnlyList<T> expressions)
+        where T : Expression
+    {
+        T[]? newExpressions = null;
+        for (var i = 0; i < expressions.Count; i++)
+        {
+            var expression = expressions[i];
+            var visited = (T)Visit(expression);
+            if (!ReferenceEquals(visited, expression) && newExpressions is null)
+            {
+                newExpressions = new T[expressions.Count];
+                for (var j = 0; j < i; j++)
+                {
+                    newExpressions[j] = expressions[j];
+                }
+            }
+
+            if (newExpressions is not null)
+            {
+                newExpressions[i] = visited;
+            }
+        }
+
+        return newExpressions ?? expressions;
+    }
+
+    /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
     ///     any release. You should only use it directly in your code with extreme caution and knowing that
@@ -125,7 +155,7 @@ public class MapepireSearchConditionConvertingExpressionVisitor : SqlExpressionV
     {
         var parentSearchCondition = _isSearchCondition;
 
-        var testIsCondition = caseExpression.Operand == null;
+        var testIsCondition = caseExpression.Operand is null;
         _isSearchCondition = false;
         var operand = (SqlExpression?)Visit(caseExpression.Operand);
         var whenClauses = new List<CaseWhenClause>();
@@ -290,33 +320,6 @@ public class MapepireSearchConditionConvertingExpressionVisitor : SqlExpressionV
     ///     any release. You should only use it directly in your code with extreme caution and knowing that
     ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
-    // Replacement for EF Core's internal ExpressionVisitorExtensions.VisitAndConvert(IReadOnlyList<T>).
-    private IReadOnlyList<T> VisitList<T>(IReadOnlyList<T> expressions)
-        where T : Expression
-    {
-        T[]? newExpressions = null;
-        for (var i = 0; i < expressions.Count; i++)
-        {
-            var expression = expressions[i];
-            var visited = (T)Visit(expression);
-            if (!ReferenceEquals(visited, expression) && newExpressions == null)
-            {
-                newExpressions = new T[expressions.Count];
-                for (var j = 0; j < i; j++)
-                {
-                    newExpressions[j] = expressions[j];
-                }
-            }
-
-            if (newExpressions != null)
-            {
-                newExpressions[i] = visited;
-            }
-        }
-
-        return newExpressions ?? expressions;
-    }
-
     protected override Expression VisitSelect(SelectExpression selectExpression)
     {
         var parentSearchCondition = _isSearchCondition;
@@ -789,7 +792,7 @@ public class MapepireSearchConditionConvertingExpressionVisitor : SqlExpressionV
         {
             var columnValueSetter = updateExpression.ColumnValueSetters[i];
             var newValue = (SqlExpression)Visit(columnValueSetter.Value);
-            if (columnValueSetters != null)
+            if (columnValueSetters is not null)
             {
                 columnValueSetters.Add(new ColumnValueSetter(columnValueSetter.Column, newValue));
             }

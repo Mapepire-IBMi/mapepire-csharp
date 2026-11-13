@@ -788,8 +788,8 @@ and report what they actually returned rather than asserting compliance:
 
 ```bash
 # Must produce no output. There are no exempt files.
-git ls-files '*.cs' '*.csproj' '*.sln' '*.json' '*.md' | xargs grep -lP '\r'   # CRLF line endings
-git ls-files '*.cs' | xargs grep -lP '.{321}'                                  # lines over 320 characters
+git ls-files --eol | grep -E 'i/(crlf|mixed)|w/(crlf|mixed)'   # CRLF line endings, committed or in the working tree
+git ls-files '*.cs' | xargs grep -lP '.{321}'                  # lines over 320 characters
 
 # Lists files containing tabs. A few existing files do; your change must not add any new tabs.
 git ls-files '*.cs' | xargs grep -lP '\t'
@@ -801,7 +801,13 @@ dotnet build io.sln
 dotnet test Mapepire.EntityFrameworkCore.Tests
 ```
 
-On Git Bash for Windows, run `export LC_ALL=C.UTF-8` first; otherwise `grep -P` refuses to run.
+On Git Bash for Windows, run `export LC_ALL=C.UTF-8` first; otherwise `grep -P` refuses to run. Do not
+check line endings with `grep` there: it reads files in text mode and silently drops the `\r`, so CRLF files
+look clean. `git ls-files --eol` reports what is actually stored in the index (`i/`) and the working tree
+(`w/`).
+
+Scripts that rewrite files must write `\n` explicitly. For example, Python's `open(path, 'w')` writes CRLF
+on Windows unless you pass `newline='\n'`.
 
 The equivalent in PowerShell:
 

@@ -10,7 +10,7 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
     protected override Expression VisitSqlParameter(SqlParameterExpression sqlParameterExpression)
     {
         var storeType = sqlParameterExpression.TypeMapping?.StoreType;
-        if (storeType == null)
+        if (storeType is null)
         {
             return base.VisitSqlParameter(sqlParameterExpression);
         }
@@ -31,7 +31,7 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
     {
         Sql.Append("CASE");
 
-        if (caseExpression.Operand != null)
+        if (caseExpression.Operand is not null)
         {
             Sql.Append(" ");
             Visit(caseExpression.Operand);
@@ -42,7 +42,7 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
             foreach (var whenClause in caseExpression.WhenClauses)
             {
                 Sql.AppendLine().Append("WHEN ");
-                if (caseExpression.Operand == null && SubqueryPredicateFinder.Contains(whenClause.Test))
+                if (caseExpression.Operand is null && SubqueryPredicateFinder.HasSubqueryPredicate(whenClause.Test))
                 {
                     Sql.Append("(SELECT 1 FROM SYSIBM.SYSDUMMY1 WHERE ");
                     Visit(whenClause.Test);
@@ -57,7 +57,7 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
                 Visit(whenClause.Result);
             }
 
-            if (caseExpression.ElseResult != null)
+            if (caseExpression.ElseResult is not null)
             {
                 Sql.AppendLine().Append("ELSE ");
                 Visit(caseExpression.ElseResult);
@@ -66,39 +66,6 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
 
         Sql.AppendLine().Append("END");
         return caseExpression;
-    }
-
-    /// <summary>Finds EXISTS / IN (subquery) predicates, without looking inside nested SELECTs.</summary>
-    private sealed class SubqueryPredicateFinder : ExpressionVisitor
-    {
-        private bool _found;
-
-        public static bool Contains(Expression expression)
-        {
-            var finder = new SubqueryPredicateFinder();
-            finder.Visit(expression);
-            return finder._found;
-        }
-
-        public override Expression? Visit(Expression? node)
-        {
-            if (_found || node == null)
-            {
-                return node;
-            }
-
-            switch (node)
-            {
-                case ExistsExpression:
-                case InExpression { Subquery: not null }:
-                    _found = true;
-                    return node;
-                case SelectExpression:
-                    return node;
-                default:
-                    return base.Visit(node);
-            }
-        }
     }
 
     /// <summary>A SELECT without a FROM clause is not valid in Db2 for i.</summary>
@@ -116,7 +83,7 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
             _ => null,
         };
 
-        if (function == null)
+        if (function is null)
         {
             return base.VisitSqlBinary(sqlBinaryExpression);
         }
@@ -139,6 +106,41 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
             ExpressionType.Or => " OR ",
             _ => base.GetOperator(binaryExpression),
         };
+
+    /// <summary>Finds EXISTS / IN (subquery) predicates, without looking inside nested SELECTs.</summary>
+    private sealed class SubqueryPredicateFinder : ExpressionVisitor
+    {
+        private bool _found;
+
+        /// <summary>Whether a condition contains EXISTS or IN (subquery) outside any nested SELECT.</summary>
+        public static bool HasSubqueryPredicate(Expression expression)
+        {
+            var finder = new SubqueryPredicateFinder();
+            finder.Visit(expression);
+            return finder._found;
+        }
+
+        /// <summary>Stops at the first subquery predicate, and does not descend into nested SELECTs.</summary>
+        public override Expression? Visit(Expression? node)
+        {
+            if (_found || node is null)
+            {
+                return node;
+            }
+
+            switch (node)
+            {
+                case ExistsExpression:
+                case InExpression { Subquery: not null }:
+                    _found = true;
+                    return node;
+                case SelectExpression:
+                    return node;
+                default:
+                    return base.Visit(node);
+            }
+        }
+    }
 }
 
 /// <summary>Creates <see cref="MapepireQuerySqlGenerator"/> instances.</summary>

@@ -16,6 +16,9 @@ internal static class WireValue
     /// Values that would lose precision as JSON numbers (decimal, 64-bit integers) are sent as strings,
     /// which Db2 converts to the target column type.
     /// </summary>
+    /// <param name="value">The parameter value; null and <see cref="DBNull"/> become JSON null.</param>
+    /// <param name="dbType">The parameter's explicit <see cref="DbType"/>, if one was set.</param>
+    /// <returns>A string, number, bool or null.</returns>
     public static object? FromParameter(object? value, DbType? dbType)
     {
         if (value is null || value is DBNull)
@@ -29,43 +32,36 @@ internal static class WireValue
 
         return value switch
         {
-            string s => s,
-            char c => c.ToString(),
-            bool b => dbType == DbType.Boolean ? b : (b ? 1 : 0),
+            string text => text,
+            char character => character.ToString(),
+            bool flag => dbType == DbType.Boolean ? flag : (flag ? 1 : 0),
             byte or sbyte or short or ushort or int => Convert.ToInt32(value, CultureInfo.InvariantCulture),
             uint or long or ulong => Convert.ToString(value, CultureInfo.InvariantCulture),
-            float f => f,
-            double d => d,
-            decimal m => m.ToString(CultureInfo.InvariantCulture),
-            DateTime dt => dbType == DbType.Date
-                ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            float single => single,
+            double number => number,
+            decimal money => money.ToString(CultureInfo.InvariantCulture),
+            DateTime dateTime => dbType == DbType.Date
+                ? dateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
                 : dbType == DbType.Time
-                    ? dt.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
-                    : dt.ToString(TimestampFormat, CultureInfo.InvariantCulture),
-            DateTimeOffset dto => dto.UtcDateTime.ToString(TimestampFormat, CultureInfo.InvariantCulture),
-            DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            TimeOnly t => t.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
-            TimeSpan ts => FormatTime(ts),
-            Guid g => g.ToString("D"),
+                    ? dateTime.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+                    : dateTime.ToString(TimestampFormat, CultureInfo.InvariantCulture),
+            DateTimeOffset offset => offset.UtcDateTime.ToString(TimestampFormat, CultureInfo.InvariantCulture),
+            DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            TimeOnly time => time.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
+            TimeSpan timeSpan => FormatTime(timeSpan),
+            Guid guid => guid.ToString("D"),
             byte[] bytes => Convert.ToHexString(bytes),
-            Enum e => numericTarget || dbType == null
-                ? Convert.ToInt64(e, CultureInfo.InvariantCulture)
-                : e.ToString(),
-            IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
+            Enum enumValue => numericTarget || dbType is null
+                ? Convert.ToInt64(enumValue, CultureInfo.InvariantCulture)
+                : enumValue.ToString(),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => value.ToString(),
         };
     }
 
-    private static string FormatTime(TimeSpan ts)
-    {
-        if (ts < TimeSpan.Zero || ts >= TimeSpan.FromDays(1))
-        {
-            throw new ArgumentOutOfRangeException(nameof(ts), ts, "TIME values must be between 00:00:00 and 23:59:59.");
-        }
-
-        return ts.ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture);
-    }
-
+    /// <summary>Writes a wire-ready value (see <see cref="FromParameter"/>) as a JSON value.</summary>
+    /// <param name="writer">The JSON writer.</param>
+    /// <param name="value">A string, number, bool or null.</param>
     public static void Write(Utf8JsonWriter writer, object? value)
     {
         switch (value)
@@ -73,26 +69,26 @@ internal static class WireValue
             case null:
                 writer.WriteNullValue();
                 break;
-            case string s:
-                writer.WriteStringValue(s);
+            case string text:
+                writer.WriteStringValue(text);
                 break;
-            case bool b:
-                writer.WriteBooleanValue(b);
+            case bool flag:
+                writer.WriteBooleanValue(flag);
                 break;
-            case int i:
-                writer.WriteNumberValue(i);
+            case int integer:
+                writer.WriteNumberValue(integer);
                 break;
-            case long l:
-                writer.WriteNumberValue(l);
+            case long big:
+                writer.WriteNumberValue(big);
                 break;
-            case float f:
-                writer.WriteNumberValue(f);
+            case float single:
+                writer.WriteNumberValue(single);
                 break;
-            case double d:
-                writer.WriteNumberValue(d);
+            case double number:
+                writer.WriteNumberValue(number);
                 break;
-            case decimal m:
-                writer.WriteNumberValue(m);
+            case decimal money:
+                writer.WriteNumberValue(money);
                 break;
             default:
                 writer.WriteStringValue(Convert.ToString(value, CultureInfo.InvariantCulture));
@@ -101,6 +97,10 @@ internal static class WireValue
     }
 
     /// <summary>Converts a JSON value returned by the server to the CLR type of the column.</summary>
+    /// <param name="element">The value; JSON null or an undefined element becomes <see cref="DBNull"/>.</param>
+    /// <param name="type">The column type.</param>
+    /// <returns>The converted value.</returns>
+    /// <exception cref="InvalidCastException">The value cannot be converted to the column's type.</exception>
     public static object ToClr(JsonElement element, Db2Type type)
     {
         switch (element.ValueKind)
@@ -110,6 +110,8 @@ internal static class WireValue
                 return DBNull.Value;
         }
 
+        // From here on the element is not null, so GetString() returns null only for non-string kinds,
+        // which throw InvalidOperationException instead; the "!" below never hides a real null.
         var clrType = type.ClrType;
         try
         {
@@ -137,7 +139,7 @@ internal static class WireValue
             {
                 if (element.ValueKind == JsonValueKind.Number)
                 {
-                    return element.TryGetDecimal(out var m) ? m : (decimal)element.GetDouble();
+                    return element.TryGetDecimal(out var money) ? money : (decimal)element.GetDouble();
                 }
 
                 return decimal.Parse(element.GetString()!, NumberStyles.Float, CultureInfo.InvariantCulture);
@@ -166,8 +168,8 @@ internal static class WireValue
 
             if (clrType == typeof(DateTime))
             {
-                var s = element.GetString()!;
-                return type.Kind == Db2TypeKind.Date ? ParseDate(s) : ParseTimestamp(s);
+                var text = element.GetString()!;
+                return type.Kind == Db2TypeKind.Date ? ParseDate(text) : ParseTimestamp(text);
             }
 
             if (clrType == typeof(TimeSpan))
@@ -189,100 +191,129 @@ internal static class WireValue
         return element.ValueKind == JsonValueKind.String ? element.GetString()! : element.GetRawText();
     }
 
-    private static double ParseDouble(string s)
-        => s.Trim().ToUpperInvariant() switch
-        {
-            "NAN" => double.NaN,
-            "INFINITY" or "+INFINITY" => double.PositiveInfinity,
-            "-INFINITY" => double.NegativeInfinity,
-            var t => double.Parse(t, NumberStyles.Float, CultureInfo.InvariantCulture),
-        };
-
-    private static bool ParseBool(string s)
-        => s.Trim().ToLowerInvariant() switch
-        {
-            "true" or "1" or "t" or "y" or "yes" => true,
-            "false" or "0" or "f" or "n" or "no" => false,
-            _ => throw new FormatException($"'{s}' is not a boolean value."),
-        };
-
-    internal static DateTime ParseDate(string s)
+    /// <summary>Parses a DATE value in ISO, USA, EUR or JIS format, or the date part of a timestamp.</summary>
+    /// <param name="text">The value.</param>
+    /// <returns>The date, with a time of midnight.</returns>
+    internal static DateTime ParseDate(string text)
     {
-        s = s.Trim();
-        if (s.Length > 10)
+        var value = text.Trim();
+        if (value.Length > 10)
         {
-            return ParseTimestamp(s).Date;
+            return ParseTimestamp(value).Date;
         }
 
         string[] formats = ["yyyy-MM-dd", "MM/dd/yyyy", "dd.MM.yyyy", "yyyy/MM/dd"];
-        return DateTime.ParseExact(s, formats, CultureInfo.InvariantCulture, DateTimeStyles.None);
+        return DateTime.ParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.None);
     }
 
-    internal static DateTime ParseTimestamp(string s)
+    /// <summary>
+    /// Parses a TIMESTAMP value in the Db2 format (<c>yyyy-MM-dd-HH.mm.ss.ffffff</c>) or the JDBC format
+    /// (<c>yyyy-MM-dd HH:mm:ss.ffffff</c>). Fractional seconds beyond the 7 digits .NET supports are truncated.
+    /// </summary>
+    /// <param name="text">The value.</param>
+    /// <returns>The timestamp.</returns>
+    internal static DateTime ParseTimestamp(string text)
     {
-        s = s.Trim();
+        var value = text.Trim();
 
         // Db2 native format: yyyy-MM-dd-HH.mm.ss.ffffff
-        if (s.Length >= 19 && s[10] == '-' && s[13] == '.')
+        if (value.Length >= 19 && value[10] == '-' && value[13] == '.')
         {
-            s = string.Concat(s.AsSpan(0, 10), " ", s.Substring(11, 8).Replace('.', ':'), s.AsSpan(19));
+            value = string.Concat(value.AsSpan(0, 10), " ", value.Substring(11, 8).Replace('.', ':'), value.AsSpan(19));
         }
 
         // Fractional seconds can carry up to 12 digits; .NET supports 7.
-        var dot = s.IndexOf('.', Math.Min(19, s.Length));
+        var dot = value.IndexOf('.', Math.Min(19, value.Length));
         if (dot > 0)
         {
             var end = dot + 1;
-            while (end < s.Length && char.IsDigit(s[end]))
+            while (end < value.Length && char.IsDigit(value[end]))
             {
                 end++;
             }
 
             if (end - dot - 1 > 7)
             {
-                s = string.Concat(s.AsSpan(0, dot + 8), s.AsSpan(end));
+                value = string.Concat(value.AsSpan(0, dot + 8), value.AsSpan(end));
             }
         }
 
         string[] formats = ["yyyy-MM-dd HH:mm:ss.FFFFFFF", "yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd"];
-        return DateTime.ParseExact(s, formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
+        return DateTime.ParseExact(value, formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces);
     }
 
-    internal static TimeSpan ParseTime(string s)
+    /// <summary>Parses a TIME value with <c>.</c> or <c>:</c> separators, or the time part of a timestamp.</summary>
+    /// <param name="text">The value.</param>
+    /// <returns>The time of day.</returns>
+    internal static TimeSpan ParseTime(string text)
     {
-        s = s.Trim();
-        if (s.Length >= 19 && s[4] == '-')
+        var value = text.Trim();
+        if (value.Length >= 19 && value[4] == '-')
         {
-            return ParseTimestamp(s).TimeOfDay;
+            return ParseTimestamp(value).TimeOfDay;
         }
 
-        var parts = s.Replace('.', ':').Split(':');
+        var parts = value.Replace('.', ':').Split(':');
         return new TimeSpan(
             int.Parse(parts[0], CultureInfo.InvariantCulture),
             parts.Length > 1 ? int.Parse(parts[1], CultureInfo.InvariantCulture) : 0,
             parts.Length > 2 ? int.Parse(parts[2], CultureInfo.InvariantCulture) : 0);
     }
 
+    /// <summary>Formats a time of day for a TIME parameter.</summary>
+    /// <param name="timeSpan">The time of day.</param>
+    /// <returns>The time as <c>HH:mm:ss</c>; Db2 for i TIME has whole-second precision.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative or a day or longer.</exception>
+    private static string FormatTime(TimeSpan timeSpan)
+    {
+        if (timeSpan < TimeSpan.Zero || timeSpan >= TimeSpan.FromDays(1))
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeSpan), timeSpan, "TIME values must be between 00:00:00 and 23:59:59.");
+        }
+
+        return timeSpan.ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture);
+    }
+
+    private static double ParseDouble(string text)
+        => text.Trim().ToUpperInvariant() switch
+        {
+            "NAN" => double.NaN,
+            "INFINITY" or "+INFINITY" => double.PositiveInfinity,
+            "-INFINITY" => double.NegativeInfinity,
+            var number => double.Parse(number, NumberStyles.Float, CultureInfo.InvariantCulture),
+        };
+
+    private static bool ParseBool(string text)
+        => text.Trim().ToLowerInvariant() switch
+        {
+            "true" or "1" or "t" or "y" or "yes" => true,
+            "false" or "0" or "f" or "n" or "no" => false,
+            _ => throw new FormatException($"'{text}' is not a boolean value."),
+        };
+
+    /// <summary>Parses a binary value sent as a JSON array of bytes, a hexadecimal string, or a base64 string.</summary>
+    /// <param name="element">The value.</param>
+    /// <returns>The bytes.</returns>
     private static byte[] ParseBinary(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Array)
         {
             var bytes = new byte[element.GetArrayLength()];
-            var i = 0;
-            foreach (var b in element.EnumerateArray())
+            var index = 0;
+            foreach (var item in element.EnumerateArray())
             {
-                bytes[i++] = unchecked((byte)b.GetInt32());
+                bytes[index++] = unchecked((byte)item.GetInt32());
             }
 
             return bytes;
         }
 
-        var s = element.GetString() ?? string.Empty;
-        if (s.Length % 2 == 0 && s.All(Uri.IsHexDigit))
+        var text = element.GetString() ?? string.Empty;
+        if (text.Length % 2 == 0 && text.All(Uri.IsHexDigit))
         {
-            return Convert.FromHexString(s);
+            return Convert.FromHexString(text);
         }
 
-        return Convert.FromBase64String(s);
+        return Convert.FromBase64String(text);
     }
 }

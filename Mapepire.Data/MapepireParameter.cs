@@ -11,10 +11,14 @@ public sealed class MapepireParameter : DbParameter
     private string _parameterName = string.Empty;
     private DbType? _dbType;
 
+    /// <summary>Creates an unnamed parameter with no value.</summary>
     public MapepireParameter()
     {
     }
 
+    /// <summary>Creates a parameter.</summary>
+    /// <param name="parameterName">The name, with or without a leading <c>@</c>.</param>
+    /// <param name="value">The value; null or <see cref="DBNull"/> sends SQL NULL.</param>
     public MapepireParameter(string? parameterName, object? value)
     {
         ParameterName = parameterName;
@@ -27,8 +31,6 @@ public sealed class MapepireParameter : DbParameter
         get => _dbType ?? InferDbType(Value);
         set => _dbType = value;
     }
-
-    internal DbType? ExplicitDbType => _dbType;
 
     /// <inheritdoc />
     public override ParameterDirection Direction { get; set; } = ParameterDirection.Input;
@@ -43,12 +45,6 @@ public sealed class MapepireParameter : DbParameter
         get => _parameterName;
         set => _parameterName = value ?? string.Empty;
     }
-
-    /// <summary>The parameter name without a leading '@', ':' or '?'.</summary>
-    internal string NormalizedName => Normalize(_parameterName);
-
-    internal static string Normalize(string name)
-        => name.Length > 0 && name[0] is '@' or ':' or '?' ? name[1..] : name;
 
     /// <inheritdoc />
     [AllowNull]
@@ -69,9 +65,20 @@ public sealed class MapepireParameter : DbParameter
     /// <inheritdoc />
     public override byte Scale { get; set; }
 
+    /// <summary>The <see cref="DbType"/> set by the caller, or null if it is inferred from the value.</summary>
+    internal DbType? ExplicitDbType => _dbType;
+
+    /// <summary>The parameter name without a leading '@', ':' or '?'.</summary>
+    internal string NormalizedName => Normalize(_parameterName);
+
     /// <inheritdoc />
     public override void ResetDbType() => _dbType = null;
 
+    /// <summary>Removes a leading '@', ':' or '?' from a parameter name.</summary>
+    internal static string Normalize(string name)
+        => name.Length > 0 && name[0] is '@' or ':' or '?' ? name[1..] : name;
+
+    /// <summary>Infers the <see cref="DbType"/> reported for a parameter whose type was not set explicitly.</summary>
     private static DbType InferDbType(object? value) => value switch
     {
         null or DBNull => DbType.Object,
@@ -109,12 +116,14 @@ public sealed class MapepireParameterCollection : DbParameterCollection
     /// <inheritdoc />
     public override object SyncRoot => ((ICollection)_items).SyncRoot;
 
+    /// <summary>Gets or sets the parameter at an index.</summary>
     public new MapepireParameter this[int index]
     {
         get => _items[index];
         set => _items[index] = value;
     }
 
+    /// <summary>Gets or sets a parameter by name; a leading <c>@</c>, <c>:</c> or <c>?</c> is ignored.</summary>
     public new MapepireParameter this[string parameterName]
     {
         get => _items[IndexOfChecked(parameterName)];
@@ -122,6 +131,7 @@ public sealed class MapepireParameterCollection : DbParameterCollection
     }
 
     /// <summary>Adds a parameter with the given name and value.</summary>
+    /// <returns>The parameter that was added.</returns>
     public MapepireParameter AddWithValue(string parameterName, object? value)
     {
         var parameter = new MapepireParameter(parameterName, value);
@@ -136,6 +146,8 @@ public sealed class MapepireParameterCollection : DbParameterCollection
         return _items.Count - 1;
     }
 
+    /// <summary>Adds a parameter.</summary>
+    /// <returns>The parameter that was added.</returns>
     public MapepireParameter Add(MapepireParameter parameter)
     {
         _items.Add(parameter);
@@ -145,9 +157,9 @@ public sealed class MapepireParameterCollection : DbParameterCollection
     /// <inheritdoc />
     public override void AddRange(Array values)
     {
-        foreach (var v in values)
+        foreach (var value in values)
         {
-            Add(v!);
+            Add(value ?? throw new ArgumentException("The array contains a null element.", nameof(values)));
         }
     }
 
@@ -155,7 +167,7 @@ public sealed class MapepireParameterCollection : DbParameterCollection
     public override void Clear() => _items.Clear();
 
     /// <inheritdoc />
-    public override bool Contains(object value) => value is MapepireParameter p && _items.Contains(p);
+    public override bool Contains(object value) => value is MapepireParameter parameter && _items.Contains(parameter);
 
     /// <inheritdoc />
     public override bool Contains(string value) => IndexOf(value) >= 0;
@@ -167,7 +179,7 @@ public sealed class MapepireParameterCollection : DbParameterCollection
     public override IEnumerator GetEnumerator() => _items.GetEnumerator();
 
     /// <inheritdoc />
-    public override int IndexOf(object value) => value is MapepireParameter p ? _items.IndexOf(p) : -1;
+    public override int IndexOf(object value) => value is MapepireParameter parameter ? _items.IndexOf(parameter) : -1;
 
     /// <inheritdoc />
     public override int IndexOf(string parameterName)
@@ -208,13 +220,13 @@ public sealed class MapepireParameterCollection : DbParameterCollection
     /// <inheritdoc />
     protected override void SetParameter(string parameterName, DbParameter value) => _items[IndexOfChecked(parameterName)] = Cast(value);
 
+    private static MapepireParameter Cast(object value)
+        => value as MapepireParameter
+            ?? throw new InvalidCastException($"Only {nameof(MapepireParameter)} objects can be added to the collection.");
+
     private int IndexOfChecked(string parameterName)
     {
         var index = IndexOf(parameterName);
         return index >= 0 ? index : throw new IndexOutOfRangeException($"Parameter '{parameterName}' not found.");
     }
-
-    private static MapepireParameter Cast(object value)
-        => value as MapepireParameter
-            ?? throw new InvalidCastException($"Only {nameof(MapepireParameter)} objects can be added to the collection.");
 }

@@ -15,14 +15,18 @@ namespace Mapepire.Data;
 /// </remarks>
 public sealed class MapepireCommand : DbCommand
 {
+    private readonly MapepireParameterCollection _parameters = new();
     private string _commandText = string.Empty;
     private MapepireConnection? _connection;
-    private readonly MapepireParameterCollection _parameters = new();
 
+    /// <summary>Creates a command with no text and no connection.</summary>
     public MapepireCommand()
     {
     }
 
+    /// <summary>Creates a command.</summary>
+    /// <param name="commandText">The SQL statement.</param>
+    /// <param name="connection">The connection to run it on.</param>
     public MapepireCommand(string? commandText, MapepireConnection? connection = null)
     {
         CommandText = commandText;
@@ -52,6 +56,7 @@ public sealed class MapepireCommand : DbCommand
     /// <summary>Rows requested per round trip. Defaults to the connection's <c>Fetch Size</c>.</summary>
     public int? FetchSize { get; set; }
 
+    /// <summary>The connection the command runs on.</summary>
     public new MapepireConnection? Connection
     {
         get => _connection;
@@ -65,11 +70,13 @@ public sealed class MapepireCommand : DbCommand
         set => _connection = (MapepireConnection?)value;
     }
 
+    /// <summary>The command's parameters.</summary>
     public new MapepireParameterCollection Parameters => _parameters;
 
     /// <inheritdoc />
     protected override DbParameterCollection DbParameterCollection => _parameters;
 
+    /// <summary>The transaction the command runs in, if any.</summary>
     public new MapepireTransaction? Transaction { get; set; }
 
     /// <inheritdoc />
@@ -90,9 +97,7 @@ public sealed class MapepireCommand : DbCommand
         // Statements with parameters are always prepared by the server.
     }
 
-    /// <inheritdoc />
-    protected override DbParameter CreateDbParameter() => new MapepireParameter();
-
+    /// <summary>Creates a parameter; it is not added to <see cref="Parameters"/>.</summary>
     public new MapepireParameter CreateParameter() => new();
 
     /// <inheritdoc />
@@ -101,7 +106,7 @@ public sealed class MapepireCommand : DbCommand
         var connection = CheckConnection();
         var (sql, bound) = BuildStatement();
         var result = connection.Session.Execute(sql, bound.Values, 1);
-        if (!result.IsDone && result.Id != null)
+        if (!result.IsDone && result.Id is not null)
         {
             connection.Session.CloseCursor(result.Id);
         }
@@ -119,17 +124,6 @@ public sealed class MapepireCommand : DbCommand
     }
 
     /// <inheritdoc />
-    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
-    {
-        var connection = CheckConnection();
-        var (sql, bound) = BuildStatement();
-        var fetchSize = behavior.HasFlag(CommandBehavior.SingleRow) ? 1 : FetchSize ?? connection.FetchSize;
-        var result = connection.Session.Execute(sql, bound.Values, fetchSize);
-        PropagateOutputParameters(result, bound.Parameters);
-        return new MapepireDataReader(this, connection, result, sql, fetchSize, behavior);
-    }
-
-    /// <inheritdoc />
     public override Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -143,32 +137,12 @@ public sealed class MapepireCommand : DbCommand
         return Task.Run(ExecuteScalar, cancellationToken);
     }
 
-    /// <inheritdoc />
-    protected override Task<DbDataReader> ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.Run(() => ExecuteDbDataReader(behavior), cancellationToken);
-    }
-
-    private MapepireConnection CheckConnection()
-    {
-        var connection = _connection ?? throw new InvalidOperationException("The command has no connection.");
-        if (connection.State != ConnectionState.Open)
-        {
-            throw new InvalidOperationException("The connection is not open.");
-        }
-
-        if (string.IsNullOrWhiteSpace(_commandText))
-        {
-            throw new InvalidOperationException("The command text has not been set.");
-        }
-
-        return connection;
-    }
-
-    internal readonly record struct BoundParameters(List<object?> Values, List<MapepireParameter> Parameters);
-
-    /// <summary>Produces the SQL sent to the server and the ordered list of parameter values.</summary>
+    /// <summary>
+    /// Produces the SQL sent to the server and the ordered list of parameter values. Named markers are rewritten
+    /// to positional ones; stored procedures become a CALL statement; TableDirect becomes SELECT *.
+    /// </summary>
+    /// <returns>The statement and its bound parameters, in marker order.</returns>
+    /// <exception cref="InvalidOperationException">The statement has more positional markers than parameters.</exception>
     internal (string Sql, BoundParameters Bound) BuildStatement()
     {
         var ordered = new List<MapepireParameter>();
@@ -178,19 +152,19 @@ public sealed class MapepireCommand : DbCommand
         {
             case CommandType.StoredProcedure:
             {
-                var sb = new StringBuilder("CALL ").Append(_commandText.Trim()).Append('(');
-                foreach (MapepireParameter p in _parameters)
+                var builder = new StringBuilder("CALL ").Append(_commandText.Trim()).Append('(');
+                foreach (MapepireParameter parameter in _parameters)
                 {
-                    if (p.Direction == ParameterDirection.ReturnValue)
+                    if (parameter.Direction == ParameterDirection.ReturnValue)
                     {
                         continue;
                     }
 
-                    sb.Append(ordered.Count == 0 ? "?" : ", ?");
-                    ordered.Add(p);
+                    builder.Append(ordered.Count == 0 ? "?" : ", ?");
+                    ordered.Add(parameter);
                 }
 
-                sql = sb.Append(')').ToString();
+                sql = builder.Append(')').ToString();
                 break;
             }
 
@@ -202,7 +176,7 @@ public sealed class MapepireCommand : DbCommand
             {
                 var rewritten = SqlParameterRewriter.Rewrite(_commandText, name => _parameters.IndexOf(name) >= 0);
                 sql = rewritten.Sql;
-                if (rewritten.NamedOrder != null)
+                if (rewritten.NamedOrder is not null)
                 {
                     foreach (var name in rewritten.NamedOrder)
                     {
@@ -211,11 +185,11 @@ public sealed class MapepireCommand : DbCommand
                 }
                 else if (rewritten.PositionalCount > 0)
                 {
-                    foreach (MapepireParameter p in _parameters)
+                    foreach (MapepireParameter parameter in _parameters)
                     {
-                        if (p.Direction != ParameterDirection.ReturnValue)
+                        if (parameter.Direction != ParameterDirection.ReturnValue)
                         {
-                            ordered.Add(p);
+                            ordered.Add(parameter);
                         }
                     }
 
@@ -236,14 +210,38 @@ public sealed class MapepireCommand : DbCommand
         }
 
         var values = new List<object?>(ordered.Count);
-        foreach (var p in ordered)
+        foreach (var parameter in ordered)
         {
-            values.Add(p.Direction == ParameterDirection.Output ? null : WireValue.FromParameter(p.Value, p.ExplicitDbType));
+            values.Add(parameter.Direction == ParameterDirection.Output ? null : WireValue.FromParameter(parameter.Value, parameter.ExplicitDbType));
         }
 
         return (sql, new BoundParameters(values, ordered));
     }
 
+    /// <inheritdoc />
+    protected override DbParameter CreateDbParameter() => new MapepireParameter();
+
+    /// <inheritdoc />
+    protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
+    {
+        var connection = CheckConnection();
+        var (sql, bound) = BuildStatement();
+        var fetchSize = behavior.HasFlag(CommandBehavior.SingleRow) ? 1 : FetchSize ?? connection.FetchSize;
+        var result = connection.Session.Execute(sql, bound.Values, fetchSize);
+        PropagateOutputParameters(result, bound.Parameters);
+        return new MapepireDataReader(connection, result, sql, fetchSize, behavior);
+    }
+
+    /// <inheritdoc />
+    protected override Task<DbDataReader> ExecuteDbDataReaderAsync(CommandBehavior behavior, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.Run(() => ExecuteDbDataReader(behavior), cancellationToken);
+    }
+
+    /// <summary>Copies OUT and INOUT values returned by the server into their parameters.</summary>
+    /// <param name="result">The server reply.</param>
+    /// <param name="ordered">The parameters in marker order; the server reports values by 1-based marker index.</param>
     private static void PropagateOutputParameters(ServerResult result, List<MapepireParameter> ordered)
     {
         foreach (var output in result.OutputParameters)
@@ -254,11 +252,33 @@ public sealed class MapepireCommand : DbCommand
                 continue;
             }
 
-            var p = ordered[index];
-            if (p.Direction is ParameterDirection.Output or ParameterDirection.InputOutput)
+            var parameter = ordered[index];
+            if (parameter.Direction is ParameterDirection.Output or ParameterDirection.InputOutput)
             {
-                p.Value = WireValue.ToClr(output.Value, Db2Type.FromName(output.TypeName));
+                parameter.Value = WireValue.ToClr(output.Value, Db2Type.FromName(output.TypeName));
             }
         }
     }
+
+    /// <summary>Checks that the command can run.</summary>
+    /// <returns>The open connection.</returns>
+    /// <exception cref="InvalidOperationException">There is no open connection, or no command text.</exception>
+    private MapepireConnection CheckConnection()
+    {
+        var connection = _connection ?? throw new InvalidOperationException("The command has no connection.");
+        if (connection.State != ConnectionState.Open)
+        {
+            throw new InvalidOperationException("The connection is not open.");
+        }
+
+        if (string.IsNullOrWhiteSpace(_commandText))
+        {
+            throw new InvalidOperationException("The command text has not been set.");
+        }
+
+        return connection;
+    }
+
+    /// <summary>Parameter values ready to send, and the parameters they came from, in marker order.</summary>
+    internal readonly record struct BoundParameters(List<object?> Values, List<MapepireParameter> Parameters);
 }

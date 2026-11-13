@@ -46,29 +46,38 @@ public class MapepireTypeMappingSource : RelationalTypeMappingSource
     protected override RelationalTypeMapping? FindMapping(in RelationalTypeMappingInfo mappingInfo)
         => base.FindMapping(mappingInfo) ?? FindRawMapping(mappingInfo);
 
+    /// <summary>
+    /// Finds a mapping for a property: by its configured column type if it has one, otherwise by its CLR type.
+    /// </summary>
+    /// <param name="mappingInfo">The CLR type, column type and facets requested.</param>
+    /// <returns>The mapping, or null if the type is not supported.</returns>
     private static RelationalTypeMapping? FindRawMapping(in RelationalTypeMappingInfo mappingInfo)
     {
         var clrType = mappingInfo.ClrType;
         var storeTypeName = mappingInfo.StoreTypeName;
 
-        if (storeTypeName != null)
+        if (storeTypeName is not null)
         {
             var mapping = FindByStoreType(storeTypeName, clrType, mappingInfo);
-            if (mapping != null && (clrType == null || mapping.ClrType == clrType))
+            if (mapping is not null && (clrType is null || mapping.ClrType == clrType))
             {
                 return mapping;
             }
 
             // Unknown store type: fall through to the CLR type if there is one.
-            if (clrType == null)
+            if (clrType is null)
             {
                 return null;
             }
         }
 
-        return clrType == null ? null : FindByClrType(clrType, mappingInfo);
+        return clrType is null ? null : FindByClrType(clrType, mappingInfo);
     }
 
+    /// <summary>Chooses the default Db2 for i column type for a CLR type, applying size, precision and Unicode facets.</summary>
+    /// <param name="clrType">The CLR type.</param>
+    /// <param name="info">The facets requested.</param>
+    /// <returns>The mapping, or null if the CLR type is not supported.</returns>
     private static RelationalTypeMapping? FindByClrType(Type clrType, in RelationalTypeMappingInfo info)
     {
         if (clrType == typeof(int))
@@ -168,6 +177,11 @@ public class MapepireTypeMappingSource : RelationalTypeMappingSource
         return null;
     }
 
+    /// <summary>Maps an explicitly configured Db2 for i column type.</summary>
+    /// <param name="storeTypeName">The column type, for example <c>VARCHAR(50)</c> or <c>CHAR(10) FOR BIT DATA</c>.</param>
+    /// <param name="clrType">The CLR type of the property, if known; it selects among mappings for the same column type.</param>
+    /// <param name="info">The facets parsed from the column type.</param>
+    /// <returns>The mapping, or null if the column type is not recognized.</returns>
     private static RelationalTypeMapping? FindByStoreType(string storeTypeName, Type? clrType, in RelationalTypeMappingInfo info)
     {
         var upper = storeTypeName.Trim().ToUpperInvariant();

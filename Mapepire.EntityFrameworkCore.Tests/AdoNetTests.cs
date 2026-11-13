@@ -8,11 +8,8 @@ namespace Mapepire.EntityFrameworkCore.Tests;
 [TestClass]
 public sealed class AdoNetTests
 {
-    private static SqlParameterRewriter.Result Rewrite(string sql, params string[] names)
-        => SqlParameterRewriter.Rewrite(sql, n => names.Contains(n, StringComparer.OrdinalIgnoreCase));
-
     [TestMethod]
-    public void Named_parameters_become_positional_and_repeat()
+    public void NamedParametersBecomePositionalAndRepeat()
     {
         var r = Rewrite("SELECT * FROM T WHERE A = @p0 OR B = @p1 OR C = @p0", "p0", "p1");
         Assert.AreEqual("SELECT * FROM T WHERE A = ? OR B = ? OR C = ?", r.Sql);
@@ -20,7 +17,7 @@ public sealed class AdoNetTests
     }
 
     [TestMethod]
-    public void Markers_inside_literals_identifiers_and_comments_are_ignored()
+    public void MarkersInsideLiteralsIdentifiersAndCommentsAreIgnored()
     {
         var r = Rewrite("SELECT '@p0 ?', \"@p0\" FROM T -- @p0 ?\n/* @p0 ? */ WHERE X = @p0", "p0");
         Assert.AreEqual("SELECT '@p0 ?', \"@p0\" FROM T -- @p0 ?\n/* @p0 ? */ WHERE X = ?", r.Sql);
@@ -29,21 +26,21 @@ public sealed class AdoNetTests
     }
 
     [TestMethod]
-    public void Escaped_quotes_inside_literals()
+    public void EscapedQuotesInsideLiterals()
     {
         var r = Rewrite("SELECT 'it''s @p0' FROM T WHERE X = @p0", "p0");
         Assert.AreEqual("SELECT 'it''s @p0' FROM T WHERE X = ?", r.Sql);
     }
 
     [TestMethod]
-    public void At_sign_inside_identifier_and_unknown_names_are_kept()
+    public void AtSignInsideIdentifierAndUnknownNamesAreKept()
     {
         var r = Rewrite("SELECT MY@COL, @unknown FROM T WHERE X = @p0", "p0");
         Assert.AreEqual("SELECT MY@COL, @unknown FROM T WHERE X = ?", r.Sql);
     }
 
     [TestMethod]
-    public void Positional_markers_are_counted()
+    public void PositionalMarkersAreCounted()
     {
         var r = Rewrite("INSERT INTO T VALUES (?, ?, '?')");
         Assert.IsNull(r.NamedOrder);
@@ -51,15 +48,16 @@ public sealed class AdoNetTests
     }
 
     [TestMethod]
-    public void Mixed_markers_are_rejected()
+    public void MixedMarkersAreRejected()
         => Assert.ThrowsException<InvalidOperationException>(() => Rewrite("SELECT ? FROM T WHERE X = @p0", "p0"));
 
     [TestMethod]
-    public void Trailing_terminator_is_removed()
+    public void TrailingTerminatorIsRemoved()
         => Assert.AreEqual("SELECT 1 FROM SYSIBM.SYSDUMMY1", Rewrite("  SELECT 1 FROM SYSIBM.SYSDUMMY1;\r\n ").Sql);
 
+    /// <summary>A named parameter used twice is bound twice, in marker order, and the trailing terminator is dropped.</summary>
     [TestMethod]
-    public void Command_binds_named_parameters_in_order()
+    public void CommandBindsNamedParametersInOrder()
     {
         var command = new MapepireCommand("UPDATE T SET A = @a, B = @b WHERE A = @a;");
         command.Parameters.AddWithValue("@b", 2m);
@@ -69,8 +67,9 @@ public sealed class AdoNetTests
         CollectionAssert.AreEqual(new object?[] { 1, "2", 1 }, bound.Values);
     }
 
+    /// <summary>CommandType.StoredProcedure becomes a CALL with one marker per non-return-value parameter.</summary>
     [TestMethod]
-    public void Stored_procedure_command_builds_call()
+    public void StoredProcedureCommandBuildsCall()
     {
         var command = new MapepireCommand("MYLIB.MYPROC") { CommandType = CommandType.StoredProcedure };
         command.Parameters.AddWithValue("x", "a");
@@ -80,8 +79,9 @@ public sealed class AdoNetTests
         Assert.AreEqual(2, bound.Values.Count);
     }
 
+    /// <summary>Parameter values are converted to JSON-safe forms: JDBC date/time strings, decimals and 64-bit integers as strings, booleans per DbType, and bytes as hex.</summary>
     [TestMethod]
-    public void Parameter_values_are_wire_safe()
+    public void ParameterValuesAreWireSafe()
     {
         Assert.AreEqual("2024-01-02 03:04:05.123456", WireValue.FromParameter(new DateTime(2024, 1, 2, 3, 4, 5).AddTicks(1234560), null));
         Assert.AreEqual("2024-01-02", WireValue.FromParameter(new DateTime(2024, 1, 2), DbType.Date));
@@ -95,8 +95,9 @@ public sealed class AdoNetTests
         Assert.IsNull(WireValue.FromParameter(DBNull.Value, null));
     }
 
+    /// <summary>Server date/time values in the Db2 and JDBC formats parse, including over-long fractional seconds.</summary>
     [TestMethod]
-    public void Timestamps_in_db2_and_jdbc_formats_are_parsed()
+    public void TimestampsInDb2AndJdbcFormatsAreParsed()
     {
         var expected = new DateTime(2024, 1, 2, 3, 4, 5).AddTicks(1234560);
         Assert.AreEqual(expected, WireValue.ParseTimestamp("2024-01-02-03.04.05.123456"));
@@ -107,22 +108,24 @@ public sealed class AdoNetTests
         Assert.AreEqual(new TimeSpan(3, 4, 5), WireValue.ParseTime("03:04:05"));
     }
 
+    /// <summary>JSON values from the server convert to the CLR type of their Db2 column type.</summary>
     [TestMethod]
-    public void Json_values_convert_by_column_type()
+    public void JsonValuesConvertByColumnType()
     {
-        static System.Text.Json.JsonElement J(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
-        Assert.AreEqual(42, WireValue.ToClr(J("42"), Db2Type.FromName("INTEGER")));
-        Assert.AreEqual(12.5m, WireValue.ToClr(J("12.50"), Db2Type.FromName("DECIMAL")));
-        Assert.AreEqual(12.5m, WireValue.ToClr(J("\"12.50\""), Db2Type.FromName("NUMERIC")));
-        Assert.AreEqual("abc  ", WireValue.ToClr(J("\"abc  \""), Db2Type.FromName("CHAR")));
-        Assert.AreEqual(new DateTime(2024, 1, 2), WireValue.ToClr(J("\"2024-01-02\""), Db2Type.FromName("DATE")));
-        Assert.AreEqual(DBNull.Value, WireValue.ToClr(J("null"), Db2Type.FromName("VARCHAR")));
-        CollectionAssert.AreEqual(new byte[] { 1, 2 }, (byte[])WireValue.ToClr(J("\"0102\""), Db2Type.FromName("VARBINARY")));
+        static System.Text.Json.JsonElement Json(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
+        Assert.AreEqual(42, WireValue.ToClr(Json("42"), Db2Type.FromName("INTEGER")));
+        Assert.AreEqual(12.5m, WireValue.ToClr(Json("12.50"), Db2Type.FromName("DECIMAL")));
+        Assert.AreEqual(12.5m, WireValue.ToClr(Json("\"12.50\""), Db2Type.FromName("NUMERIC")));
+        Assert.AreEqual("abc  ", WireValue.ToClr(Json("\"abc  \""), Db2Type.FromName("CHAR")));
+        Assert.AreEqual(new DateTime(2024, 1, 2), WireValue.ToClr(Json("\"2024-01-02\""), Db2Type.FromName("DATE")));
+        Assert.AreEqual(DBNull.Value, WireValue.ToClr(Json("null"), Db2Type.FromName("VARCHAR")));
+        CollectionAssert.AreEqual(new byte[] { 1, 2 }, (byte[])WireValue.ToClr(Json("\"0102\""), Db2Type.FromName("VARBINARY")));
         Assert.AreEqual(typeof(byte[]), Db2Type.FromName("CHAR () FOR BIT DATA").ClrType);
     }
 
+    /// <summary>Connection string synonyms resolve to canonical keywords and map onto the JDBC options sent to the server.</summary>
     [TestMethod]
-    public void Connection_string_synonyms_and_jdbc_options()
+    public void ConnectionStringSynonymsAndJdbcOptions()
     {
         var b = new MapepireConnectionStringBuilder("Host=sys1;UID=me;PWD=pw;Database=LIB1;Libraries=LIB2, LIB3;Auto Commit=false;Trust Server Certificate=true");
         Assert.AreEqual("sys1", b.Server);
@@ -141,11 +144,14 @@ public sealed class AdoNetTests
     }
 
     [TestMethod]
-    public void Opening_without_server_fails_clearly()
+    public void OpeningWithoutServerFailsClearly()
     {
         using var connection = new MapepireConnection("User ID=me");
         var ex = Assert.ThrowsException<InvalidOperationException>(connection.Open);
         StringAssert.Contains(ex.Message, "Server");
         Assert.AreEqual(ConnectionState.Closed, connection.State);
     }
+
+    private static SqlParameterRewriter.Result Rewrite(string sql, params string[] names)
+        => SqlParameterRewriter.Rewrite(sql, n => names.Contains(n, StringComparer.OrdinalIgnoreCase));
 }

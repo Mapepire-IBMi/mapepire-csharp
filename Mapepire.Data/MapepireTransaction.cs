@@ -42,17 +42,10 @@ public sealed class MapepireTransaction : DbTransaction
     /// <inheritdoc />
     public override void Rollback() => End(commit: false, disposing: false);
 
-    private void End(bool commit, bool disposing)
-    {
-        var connection = _connection ?? throw new InvalidOperationException("The transaction has already completed.");
-        _connection = null;
-        connection.EndTransaction(this, commit, disposing);
-    }
-
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
-        if (disposing && _connection != null)
+        if (disposing && _connection is not null)
         {
             try
             {
@@ -65,5 +58,13 @@ public sealed class MapepireTransaction : DbTransaction
         }
 
         base.Dispose(disposing);
+    }
+
+    /// <summary>Ends the transaction through its connection. A transaction can only be ended once.</summary>
+    private void End(bool commit, bool disposing)
+    {
+        var connection = _connection ?? throw new InvalidOperationException("The transaction has already completed.");
+        _connection = null;
+        connection.EndTransaction(this, commit, disposing);
     }
 }

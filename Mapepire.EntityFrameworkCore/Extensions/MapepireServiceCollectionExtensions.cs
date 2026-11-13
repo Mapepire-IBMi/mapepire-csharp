@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 using Mapepire.EntityFrameworkCore.Diagnostics.Internal;
 using Mapepire.EntityFrameworkCore.Infrastructure;
 using Mapepire.EntityFrameworkCore.Metadata.Internal;
@@ -6,7 +7,6 @@ using Mapepire.EntityFrameworkCore.Migrations.Internal;
 using Mapepire.EntityFrameworkCore.Query.Internal;
 using Mapepire.EntityFrameworkCore.Storage.Internal;
 using Mapepire.EntityFrameworkCore.Update.Internal;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 
 // ReSharper disable once CheckNamespace
 namespace Microsoft.Extensions.DependencyInjection;
