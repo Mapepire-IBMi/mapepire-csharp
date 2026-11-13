@@ -71,7 +71,7 @@ public sealed class LiveServerTests
     private static BloggingContext CreateContext(bool autoCommit)
     {
         var builder = new MapepireConnectionStringBuilder(_baseConnectionString) { DefaultSchema = _schema, AutoCommit = autoCommit };
-        return BloggingContext.Create(builder.ConnectionString);
+        return BloggingContext.Create(builder.ConnectionString, Console.WriteLine);
     }
 
     private static BloggingContext Context(bool autoCommit = false)

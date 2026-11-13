@@ -66,8 +66,7 @@ public class MapepireDatabaseCreator(
                 "Creating a database requires 'Default Schema' in the connection string. On Db2 for i the schema (library) is created.");
 
         // Connect without the library list: it would fail validation while the schema does not exist yet.
-        var builder = new MapepireConnectionStringBuilder(Dependencies.Connection.ConnectionString) { DefaultSchema = null, Pooling = false };
-        using var connection = new MapepireConnection(builder.ConnectionString);
+        using var connection = new MapepireConnection(CreateAdminConnectionString());
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "CREATE SCHEMA " + Dependencies.SqlGenerationHelper.DelimitIdentifier(schema);
@@ -84,13 +83,33 @@ public class MapepireDatabaseCreator(
             ?? throw new InvalidOperationException(
                 "Deleting a database requires 'Default Schema' in the connection string. On Db2 for i the schema (library) is dropped.");
 
-        ClearPool();
-        var builder = new MapepireConnectionStringBuilder(Dependencies.Connection.ConnectionString) { DefaultSchema = null, Pooling = false };
-        using var connection = new MapepireConnection(builder.ConnectionString);
+        // Pooled server jobs that have the library in their library list keep it in use (SQL0913).
+        MapepireConnection.ClearPools(b => b.DefaultSchema != null && NormalizeSchemaName(b.DefaultSchema) == schema);
+
+        using var connection = new MapepireConnection(CreateAdminConnectionString());
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "DROP SCHEMA " + Dependencies.SqlGenerationHelper.DelimitIdentifier(schema);
-        command.ExecuteNonQuery();
+
+        // Closed server jobs can take a moment to end and release the library; retry for a while.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (true)
+        {
+            try
+            {
+                command.ExecuteNonQuery();
+                return;
+            }
+            catch (MapepireException ex) when (ex.SqlCode == -913 || ex.Message.Contains("SQL0913", StringComparison.Ordinal))
+            {
+                if (DateTime.UtcNow > deadline)
+                {
+                    throw;
+                }
+
+                Thread.Sleep(TimeSpan.FromSeconds(2));
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -112,6 +131,19 @@ public class MapepireDatabaseCreator(
                 Dependencies.CurrentContext.Context,
                 Dependencies.CommandLogger,
                 CommandSource.Migrations));
+
+    /// <summary>
+    /// A connection for CREATE/DROP SCHEMA: without the library list (the schema may not exist yet) and outside
+    /// commitment control, because DROP SCHEMA fails with SQL5003 under commitment control.
+    /// </summary>
+    private string CreateAdminConnectionString()
+        => new MapepireConnectionStringBuilder(Dependencies.Connection.ConnectionString)
+        {
+            DefaultSchema = null,
+            Pooling = false,
+            AutoCommit = true,
+            TransactionIsolation = "none",
+        }.ConnectionString;
 
     private void ClearPool()
     {

@@ -66,6 +66,17 @@ internal static class SessionPool
         }
     }
 
+    public static void Clear(Func<MapepireConnectionStringBuilder, bool> predicate)
+    {
+        foreach (var key in Pools.Keys)
+        {
+            if (predicate(new MapepireConnectionStringBuilder(key)))
+            {
+                Clear(key);
+            }
+        }
+    }
+
     public static void ClearAll()
     {
         foreach (var key in Pools.Keys)

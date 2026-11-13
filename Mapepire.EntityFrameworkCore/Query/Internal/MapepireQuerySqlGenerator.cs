@@ -21,6 +21,86 @@ public class MapepireQuerySqlGenerator(QuerySqlGeneratorDependencies dependencie
         return sqlParameterExpression;
     }
 
+    /// <summary>
+    /// Db2 for i rejects subquery predicates (<c>EXISTS</c>, <c>IN (subquery)</c>) inside a CASE WHEN condition
+    /// (SQL0104 / SQL0115), but accepts them in a WHERE clause and accepts scalar subqueries in CASE. Such
+    /// conditions are therefore written as <c>WHEN (SELECT 1 FROM SYSIBM.SYSDUMMY1 WHERE condition) = 1</c>;
+    /// the subquery is NULL when the condition is not true, so the ELSE branch is taken as before.
+    /// </summary>
+    protected override Expression VisitCase(CaseExpression caseExpression)
+    {
+        Sql.Append("CASE");
+
+        if (caseExpression.Operand != null)
+        {
+            Sql.Append(" ");
+            Visit(caseExpression.Operand);
+        }
+
+        using (Sql.Indent())
+        {
+            foreach (var whenClause in caseExpression.WhenClauses)
+            {
+                Sql.AppendLine().Append("WHEN ");
+                if (caseExpression.Operand == null && SubqueryPredicateFinder.Contains(whenClause.Test))
+                {
+                    Sql.Append("(SELECT 1 FROM SYSIBM.SYSDUMMY1 WHERE ");
+                    Visit(whenClause.Test);
+                    Sql.Append(") = 1");
+                }
+                else
+                {
+                    Visit(whenClause.Test);
+                }
+
+                Sql.Append(" THEN ");
+                Visit(whenClause.Result);
+            }
+
+            if (caseExpression.ElseResult != null)
+            {
+                Sql.AppendLine().Append("ELSE ");
+                Visit(caseExpression.ElseResult);
+            }
+        }
+
+        Sql.AppendLine().Append("END");
+        return caseExpression;
+    }
+
+    /// <summary>Finds EXISTS / IN (subquery) predicates, without looking inside nested SELECTs.</summary>
+    private sealed class SubqueryPredicateFinder : ExpressionVisitor
+    {
+        private bool _found;
+
+        public static bool Contains(Expression expression)
+        {
+            var finder = new SubqueryPredicateFinder();
+            finder.Visit(expression);
+            return finder._found;
+        }
+
+        public override Expression? Visit(Expression? node)
+        {
+            if (_found || node == null)
+            {
+                return node;
+            }
+
+            switch (node)
+            {
+                case ExistsExpression:
+                case InExpression { Subquery: not null }:
+                    _found = true;
+                    return node;
+                case SelectExpression:
+                    return node;
+                default:
+                    return base.Visit(node);
+            }
+        }
+    }
+
     /// <summary>A SELECT without a FROM clause is not valid in Db2 for i.</summary>
     protected override void GeneratePseudoFromClause() => Sql.Append(" FROM SYSIBM.SYSDUMMY1");
 
