@@ -247,6 +247,12 @@ public sealed class MapepireConnection : DbConnection
         {
             ExecuteInternal(commit ? "COMMIT" : "ROLLBACK");
         }
+        catch
+        {
+            // A SQL error can leave the transaction outcome uncertain even while the socket works.
+            Session.Dispose();
+            throw;
+        }
         finally
         {
             Transaction = null;
