@@ -154,4 +154,36 @@ public sealed class AdoNetTests
 
     private static SqlParameterRewriter.Result Rewrite(string sql, params string[] names)
         => SqlParameterRewriter.Rewrite(sql, n => names.Contains(n, StringComparer.OrdinalIgnoreCase));
+
+    [TestMethod]
+    public void SettingsChangesDoNotChangeConnectionOrPoolIdentity()
+    {
+        const string connectionString = "Server=example.invalid;User ID=original;Password=unused;Auto Commit=false";
+        using var connection = new MapepireConnection(connectionString);
+        var settings = connection.Settings;
+        settings.Server = "other.invalid";
+        settings.UserId = "other";
+        settings.Password = "other-unused";
+        settings.AutoCommit = true;
+        settings.DefaultSchema = "OTHER";
+
+        Assert.AreEqual(connectionString, connection.ConnectionString);
+        Assert.AreEqual("example.invalid", connection.DataSource);
+        Assert.AreEqual("original", connection.Settings.UserId);
+        Assert.AreEqual("unused", connection.Settings.Password);
+        Assert.IsFalse(connection.Settings.AutoCommit);
+        Assert.AreEqual(string.Empty, connection.Database);
+    }
+
+    [TestMethod]
+    public void ConnectionStringChangesAreReflectedInNewSettingsSnapshots()
+    {
+        using var connection = new MapepireConnection("Server=first.invalid;User ID=first");
+        var originalSettings = connection.Settings;
+        connection.ConnectionString = "Server=second.invalid;User ID=second";
+
+        Assert.AreEqual("first.invalid", originalSettings.Server);
+        Assert.AreEqual("second.invalid", connection.Settings.Server);
+        Assert.AreEqual("second", connection.Settings.UserId);
+    }
 }
