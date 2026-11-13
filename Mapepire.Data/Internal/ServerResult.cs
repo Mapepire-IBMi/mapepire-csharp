@@ -15,7 +15,7 @@ internal sealed record ServerOutputParameter(int Index, string? Name, string? Ty
 internal sealed class ServerResult
 {
     public string? Id { get; private init; }
-    public bool Success { get; private init; }
+    public bool IsSuccess { get; private init; }
     public string? Error { get; private init; }
     public int SqlCode { get; private init; }
     public string? SqlState { get; private init; }
@@ -26,6 +26,12 @@ internal sealed class ServerResult
     public List<JsonElement[]> Rows { get; private init; } = [];
     public IReadOnlyList<ServerOutputParameter> OutputParameters { get; private init; } = [];
 
+    /// <summary>Parses a server reply.</summary>
+    /// <param name="json">The reply text.</param>
+    /// <param name="knownColumns">
+    /// Column metadata from the first page, used for <c>sqlmore</c> replies, which carry no metadata.
+    /// </param>
+    /// <returns>The parsed reply. Its values are copies, so they stay valid after this call.</returns>
     public static ServerResult Parse(string json, IReadOnlyList<ServerColumn>? knownColumns = null)
     {
         using var doc = JsonDocument.Parse(json);
@@ -76,7 +82,7 @@ internal sealed class ServerResult
         return new ServerResult
         {
             Id = GetString(root, "id"),
-            Success = root.TryGetProperty("success", out var s) && s.ValueKind == JsonValueKind.True,
+            IsSuccess = root.TryGetProperty("success", out var s) && s.ValueKind == JsonValueKind.True,
             Error = GetString(root, "error"),
             SqlCode = GetInt(root, "sql_rc"),
             SqlState = GetString(root, "sql_state"),
@@ -89,6 +95,16 @@ internal sealed class ServerResult
         };
     }
 
+    /// <summary>Creates the exception that reports this failed reply.</summary>
+    public MapepireException ToException(string fallbackMessage)
+        => new(Error ?? fallbackMessage, SqlCode, SqlState);
+
+    /// <summary>
+    /// Copies one row of values, in either the terse format (a JSON array) or the keyed format (a JSON object).
+    /// </summary>
+    /// <param name="row">The row as sent by the server.</param>
+    /// <param name="columns">The result columns, or null if unknown.</param>
+    /// <returns>The values in column order; a value missing from a keyed row is left undefined (read as null).</returns>
     private static JsonElement[] ParseRow(JsonElement row, IReadOnlyList<ServerColumn>? columns)
     {
         if (row.ValueKind == JsonValueKind.Array)
@@ -111,7 +127,7 @@ internal sealed class ServerResult
             var props = row.EnumerateObject().ToList();
             var count = columns?.Count ?? props.Count;
             var values = new JsonElement[count];
-            if (columns == null || props.Count == columns.Count)
+            if (columns is null || props.Count == columns.Count)
             {
                 for (var i = 0; i < props.Count; i++)
                 {
@@ -132,12 +148,9 @@ internal sealed class ServerResult
         return [];
     }
 
-    private static string? GetString(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    private static string? GetString(JsonElement element, string name)
+        => element.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-    private static int GetInt(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
-
-    public MapepireException ToException(string fallbackMessage)
-        => new(Error ?? fallbackMessage, SqlCode, SqlState);
+    private static int GetInt(JsonElement element, string name)
+        => element.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
 }

@@ -18,7 +18,7 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
         IModel? model,
         MigrationCommandListBuilder builder)
     {
-        if (operation.ComputedColumnSql != null)
+        if (operation.ComputedColumnSql is not null)
         {
             throw new NotSupportedException(
                 $"Computed column '{table}.{name}' is not supported: Db2 for i has no general computed columns.");
@@ -27,7 +27,7 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
         var columnType = operation.ColumnType ?? GetColumnType(schema, table, name, operation, model)!;
         builder.Append(Sql.DelimitIdentifier(name)).Append(" ").Append(columnType);
 
-        var identity = operation[MapepireAnnotationNames.Identity] != null;
+        var identity = operation[MapepireAnnotationNames.Identity] is not null;
 
         // Db2 for i columns are nullable unless NOT NULL is specified; a bare NULL keyword is not accepted.
         if (!operation.IsNullable || identity)
@@ -55,7 +55,7 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
         string? columnType,
         MigrationCommandListBuilder builder)
     {
-        if (defaultValueSql != null)
+        if (defaultValueSql is not null)
         {
             builder.Append(" DEFAULT ").Append(defaultValueSql);
             return;
@@ -73,7 +73,7 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
             _ => null,
         };
 
-        if (literal != null)
+        if (literal is not null)
         {
             builder.Append(" DEFAULT ").Append(literal);
             return;
@@ -82,8 +82,6 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
         base.DefaultValue(defaultValue, defaultValueSql, columnType, builder);
     }
 
-    private static string Quote(string s) => "'" + s + "'";
-
     /// <inheritdoc />
     protected override void Generate(AlterColumnOperation operation, IModel? model, MigrationCommandListBuilder builder)
     {
@@ -91,14 +89,14 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
         var column = Sql.DelimitIdentifier(operation.Name);
         var old = operation.OldColumn;
 
-        if (operation.ComputedColumnSql != null)
+        if (operation.ComputedColumnSql is not null)
         {
             throw new NotSupportedException(
                 $"Computed column '{operation.Table}.{operation.Name}' is not supported: Db2 for i has no general computed columns.");
         }
 
-        var identity = operation[MapepireAnnotationNames.Identity] != null;
-        var oldIdentity = old[MapepireAnnotationNames.Identity] != null;
+        var identity = operation[MapepireAnnotationNames.Identity] is not null;
+        var oldIdentity = old[MapepireAnnotationNames.Identity] is not null;
         if (identity != oldIdentity)
         {
             throw new NotSupportedException(
@@ -132,7 +130,7 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
                 || !string.Equals(operation.DefaultValueSql, old.DefaultValueSql, StringComparison.Ordinal)))
         {
             builder.Append("ALTER TABLE ").Append(table).Append(" ALTER COLUMN ").Append(column);
-            if (operation.DefaultValue == null && operation.DefaultValueSql == null)
+            if (operation.DefaultValue is null && operation.DefaultValueSql is null)
             {
                 builder.Append(" DROP DEFAULT");
             }
@@ -160,12 +158,12 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
     /// <inheritdoc />
     protected override void Generate(RenameTableOperation operation, IModel? model, MigrationCommandListBuilder builder)
     {
-        if (operation.NewSchema != operation.Schema && operation.NewSchema != null)
+        if (operation.NewSchema != operation.Schema && operation.NewSchema is not null)
         {
             throw new NotSupportedException("Moving a table to another schema is not supported by Db2 for i RENAME TABLE.");
         }
 
-        if (operation.NewName != null && operation.NewName != operation.Name)
+        if (operation.NewName is not null && operation.NewName != operation.Name)
         {
             builder.Append("RENAME TABLE ").Append(Sql.DelimitIdentifier(operation.Name, operation.Schema))
                 .Append(" TO ").Append(Sql.DelimitIdentifier(operation.NewName))
@@ -215,12 +213,6 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
         }
     }
 
-    private static bool HasNullableColumn(CreateIndexOperation operation, IModel? model)
-    {
-        var table = model?.GetRelationalModel().FindTable(operation.Table, operation.Schema);
-        return table != null && operation.Columns.Any(c => table.FindColumn(c)?.IsNullable == true);
-    }
-
     /// <inheritdoc />
     protected override void Generate(
         DropIndexOperation operation,
@@ -258,6 +250,14 @@ public class MapepireMigrationsSqlGenerator(MigrationsSqlGeneratorDependencies d
     /// <inheritdoc />
     protected override void Generate(RenameSequenceOperation operation, IModel? model, MigrationCommandListBuilder builder)
         => throw new NotSupportedException("Db2 for i does not support renaming sequences. Drop and recreate the sequence instead.");
+
+    private static string Quote(string s) => "'" + s + "'";
+
+    private static bool HasNullableColumn(CreateIndexOperation operation, IModel? model)
+    {
+        var table = model?.GetRelationalModel().FindTable(operation.Table, operation.Schema);
+        return table is not null && operation.Columns.Any(c => table.FindColumn(c)?.IsNullable == true);
+    }
 
     private static string Literal(string s) => "'" + s.Replace("'", "''") + "'";
 }

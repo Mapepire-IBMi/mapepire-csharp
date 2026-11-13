@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -12,7 +13,8 @@ namespace Mapepire.Data;
 /// </example>
 public sealed class MapepireConnectionStringBuilder : DbConnectionStringBuilder
 {
-    private static readonly Dictionary<string, string> Synonyms = new(StringComparer.OrdinalIgnoreCase)
+    // Frozen, so the shared table cannot change after type initialization.
+    private static readonly FrozenDictionary<string, string> Synonyms = new Dictionary<string, string>
     {
         ["server"] = Keywords.Server,
         ["host"] = Keywords.Server,
@@ -53,35 +55,15 @@ public sealed class MapepireConnectionStringBuilder : DbConnectionStringBuilder
         ["maximum pool size"] = Keywords.MaxPoolSize,
         ["connection idle validation"] = Keywords.IdleValidationSeconds,
         ["idle validation seconds"] = Keywords.IdleValidationSeconds,
-    };
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Canonical keyword names.</summary>
-    public static class Keywords
-    {
-        public const string Server = "Server";
-        public const string Port = "Port";
-        public const string UserId = "User ID";
-        public const string Password = "Password";
-        public const string DefaultSchema = "Default Schema";
-        public const string Libraries = "Libraries";
-        public const string RejectUnauthorized = "Reject Unauthorized";
-        public const string TrustServerCertificate = "Trust Server Certificate";
-        public const string Ca = "CA";
-        public const string Naming = "Naming";
-        public const string AutoCommit = "Auto Commit";
-        public const string TransactionIsolation = "Transaction Isolation";
-        public const string DateFormat = "Date Format";
-        public const string TimeFormat = "Time Format";
-        public const string FetchSize = "Fetch Size";
-        public const string Pooling = "Pooling";
-        public const string MaxPoolSize = "Max Pool Size";
-        public const string IdleValidationSeconds = "Idle Validation Seconds";
-    }
-
+    /// <summary>Creates an empty builder.</summary>
     public MapepireConnectionStringBuilder()
     {
     }
 
+    /// <summary>Creates a builder from a connection string.</summary>
+    /// <param name="connectionString">The connection string to parse.</param>
     public MapepireConnectionStringBuilder(string? connectionString)
     {
         ConnectionString = connectionString ?? string.Empty;
@@ -104,9 +86,6 @@ public sealed class MapepireConnectionStringBuilder : DbConnectionStringBuilder
     /// <inheritdoc />
     public override bool TryGetValue(string keyword, [NotNullWhen(true)] out object? value)
         => base.TryGetValue(Canonical(keyword), out value);
-
-    private static string Canonical(string keyword)
-        => Synonyms.TryGetValue(keyword.Trim(), out var canonical) ? canonical : keyword;
 
     /// <summary>Host name of the IBM i running the Mapepire server.</summary>
     public string? Server
@@ -252,6 +231,7 @@ public sealed class MapepireConnectionStringBuilder : DbConnectionStringBuilder
     /// <summary>
     /// Returns the effective library list: the default schema followed by any additional libraries.
     /// </summary>
+    /// <returns>The libraries in order, without duplicates.</returns>
     public IReadOnlyList<string> GetLibraryList()
     {
         var result = new List<string>();
@@ -262,11 +242,11 @@ public sealed class MapepireConnectionStringBuilder : DbConnectionStringBuilder
 
         if (!string.IsNullOrWhiteSpace(Libraries))
         {
-            foreach (var lib in Libraries.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            foreach (var library in Libraries.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                if (!result.Contains(lib, StringComparer.OrdinalIgnoreCase))
+                if (!result.Contains(library, StringComparer.OrdinalIgnoreCase))
                 {
-                    result.Add(lib);
+                    result.Add(library);
                 }
             }
         }
@@ -274,15 +254,21 @@ public sealed class MapepireConnectionStringBuilder : DbConnectionStringBuilder
         return result;
     }
 
+    private static string Canonical(string keyword)
+        => Synonyms.TryGetValue(keyword.Trim(), out var canonical) ? canonical : keyword;
+
+    /// <summary>Sets a keyword's value; null removes the keyword. Booleans are stored as <c>true</c>/<c>false</c>.</summary>
+    /// <param name="keyword">The canonical keyword.</param>
+    /// <param name="value">The value.</param>
     private void SetValue(string keyword, object? value)
     {
-        if (value == null)
+        if (value is null)
         {
             Remove(keyword);
         }
         else
         {
-            base[keyword] = value is bool b ? (b ? "true" : "false") : Convert.ToString(value, CultureInfo.InvariantCulture);
+            base[keyword] = value is bool flag ? (flag ? "true" : "false") : Convert.ToString(value, CultureInfo.InvariantCulture);
         }
     }
 
@@ -291,23 +277,51 @@ public sealed class MapepireConnectionStringBuilder : DbConnectionStringBuilder
 
     private int GetInt(string keyword, int defaultValue)
     {
-        var s = GetString(keyword);
-        return string.IsNullOrWhiteSpace(s) ? defaultValue : int.Parse(s, CultureInfo.InvariantCulture);
+        var text = GetString(keyword);
+        return string.IsNullOrWhiteSpace(text) ? defaultValue : int.Parse(text, CultureInfo.InvariantCulture);
     }
 
+    /// <summary>Reads a boolean keyword, accepting true/false, yes/no, 1/0 and on/off.</summary>
+    /// <param name="keyword">The canonical keyword.</param>
+    /// <param name="defaultValue">The value when the keyword is absent or empty.</param>
+    /// <returns>The value.</returns>
+    /// <exception cref="ArgumentException">The value is not a recognized boolean.</exception>
     private bool GetBool(string keyword, bool defaultValue)
     {
-        var s = GetString(keyword)?.Trim();
-        if (string.IsNullOrEmpty(s))
+        var text = GetString(keyword)?.Trim();
+        if (string.IsNullOrEmpty(text))
         {
             return defaultValue;
         }
 
-        return s.ToLowerInvariant() switch
+        return text.ToLowerInvariant() switch
         {
             "true" or "yes" or "1" or "on" => true,
             "false" or "no" or "0" or "off" => false,
-            _ => throw new ArgumentException($"Invalid boolean value '{s}' for connection string keyword '{keyword}'."),
+            _ => throw new ArgumentException($"Invalid boolean value '{text}' for connection string keyword '{keyword}'."),
         };
+    }
+
+    /// <summary>Canonical keyword names.</summary>
+    public static class Keywords
+    {
+        public const string Server = "Server";
+        public const string Port = "Port";
+        public const string UserId = "User ID";
+        public const string Password = "Password";
+        public const string DefaultSchema = "Default Schema";
+        public const string Libraries = "Libraries";
+        public const string RejectUnauthorized = "Reject Unauthorized";
+        public const string TrustServerCertificate = "Trust Server Certificate";
+        public const string Ca = "CA";
+        public const string Naming = "Naming";
+        public const string AutoCommit = "Auto Commit";
+        public const string TransactionIsolation = "Transaction Isolation";
+        public const string DateFormat = "Date Format";
+        public const string TimeFormat = "Time Format";
+        public const string FetchSize = "Fetch Size";
+        public const string Pooling = "Pooling";
+        public const string MaxPoolSize = "Max Pool Size";
+        public const string IdleValidationSeconds = "Idle Validation Seconds";
     }
 }

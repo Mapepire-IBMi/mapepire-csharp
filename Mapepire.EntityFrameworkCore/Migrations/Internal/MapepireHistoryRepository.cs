@@ -10,20 +10,16 @@ public class MapepireHistoryRepository(HistoryRepositoryDependencies dependencie
 {
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromSeconds(1);
 
+    /// <inheritdoc />
+    public override LockReleaseBehavior LockReleaseBehavior => LockReleaseBehavior.Explicit;
+
     /// <summary>Name of the table used as the migration lock.</summary>
     protected virtual string LockTableName => "__EFMigrationsLock";
 
     /// <inheritdoc />
     protected override string ExistsSql => CreateExistsSql(TableName);
 
-    private string CreateExistsSql(string tableName)
-    {
-        var schemaPredicate = TableSchema == null ? "CURRENT SCHEMA" : Literal(TableSchema);
-        return $"SELECT COUNT(*) FROM QSYS2.SYSTABLES WHERE TABLE_SCHEMA = {schemaPredicate} AND TABLE_NAME = {Literal(tableName)}";
-    }
-
-    /// <inheritdoc />
-    protected override bool InterpretExistsResult(object? value) => Convert.ToInt64(value) != 0;
+    private string LockTable => SqlGenerationHelper.DelimitIdentifier(LockTableName, TableSchema);
 
     /// <inheritdoc />
     public override string GetCreateIfNotExistsScript()
@@ -49,9 +45,6 @@ public class MapepireHistoryRepository(HistoryRepositoryDependencies dependencie
               END IF;
             END
             """ + Environment.NewLine;
-
-    /// <inheritdoc />
-    public override LockReleaseBehavior LockReleaseBehavior => LockReleaseBehavior.Explicit;
 
     /// <inheritdoc />
     public override IMigrationsDatabaseLock AcquireDatabaseLock()
@@ -108,15 +101,8 @@ public class MapepireHistoryRepository(HistoryRepositoryDependencies dependencie
         }
     }
 
-    private string LockTable => SqlGenerationHelper.DelimitIdentifier(LockTableName, TableSchema);
-
-    private string CreateLockTableSql()
-        => $"""CREATE TABLE {LockTable} ("Id" INTEGER NOT NULL CONSTRAINT {SqlGenerationHelper.DelimitIdentifier("PK_" + LockTableName)} PRIMARY KEY, "Timestamp" TIMESTAMP NOT NULL)""";
-
-    private string InsertLockSql()
-        => $"""INSERT INTO {LockTable} ("Id", "Timestamp") SELECT 1, CURRENT TIMESTAMP FROM SYSIBM.SYSDUMMY1 WHERE NOT EXISTS (SELECT 1 FROM {LockTable} WHERE "Id" = 1)""";
-
-    private string DeleteLockSql() => $"""DELETE FROM {LockTable} WHERE "Id" = 1""";
+    /// <inheritdoc />
+    protected override bool InterpretExistsResult(object? value) => Convert.ToInt64(value) != 0;
 
     /// <summary>Wraps a CREATE statement so it succeeds when the object already exists (SQLSTATE 42710).</summary>
     private static string WrapIgnoringAlreadyExists(string createSql)
@@ -130,6 +116,22 @@ public class MapepireHistoryRepository(HistoryRepositoryDependencies dependencie
             """;
     }
 
+    private static string Literal(string value) => "'" + value.Replace("'", "''") + "'";
+
+    private string CreateExistsSql(string tableName)
+    {
+        var schemaPredicate = TableSchema is null ? "CURRENT SCHEMA" : Literal(TableSchema);
+        return $"SELECT COUNT(*) FROM QSYS2.SYSTABLES WHERE TABLE_SCHEMA = {schemaPredicate} AND TABLE_NAME = {Literal(tableName)}";
+    }
+
+    private string CreateLockTableSql()
+        => $"""CREATE TABLE {LockTable} ("Id" INTEGER NOT NULL CONSTRAINT {SqlGenerationHelper.DelimitIdentifier("PK_" + LockTableName)} PRIMARY KEY, "Timestamp" TIMESTAMP NOT NULL)""";
+
+    private string InsertLockSql()
+        => $"""INSERT INTO {LockTable} ("Id", "Timestamp") SELECT 1, CURRENT TIMESTAMP FROM SYSIBM.SYSDUMMY1 WHERE NOT EXISTS (SELECT 1 FROM {LockTable} WHERE "Id" = 1)""";
+
+    private string DeleteLockSql() => $"""DELETE FROM {LockTable} WHERE "Id" = 1""";
+
     private IRelationalCommand Command(string sql) => Dependencies.RawSqlCommandBuilder.Build(sql);
 
     private RelationalCommandParameterObject Parameters()
@@ -140,8 +142,6 @@ public class MapepireHistoryRepository(HistoryRepositoryDependencies dependencie
             Dependencies.CurrentContext.Context,
             Dependencies.CommandLogger,
             CommandSource.Migrations);
-
-    private static string Literal(string value) => "'" + value.Replace("'", "''") + "'";
 }
 
 /// <summary>Releases the migration lock by deleting the lock row.</summary>

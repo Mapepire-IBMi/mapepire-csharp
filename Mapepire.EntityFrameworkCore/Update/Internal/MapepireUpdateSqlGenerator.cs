@@ -87,14 +87,6 @@ public class MapepireUpdateSqlGenerator(UpdateSqlGeneratorDependencies dependenc
     }
 
     /// <inheritdoc />
-    protected override void AppendValuesHeader(StringBuilder commandStringBuilder, IReadOnlyList<IColumnModification> operations)
-    {
-        commandStringBuilder.AppendLine();
-        // Db2 for i has no "DEFAULT VALUES"; VALUES (DEFAULT) inserts a row of defaults.
-        commandStringBuilder.Append(operations.Count > 0 ? "VALUES " : "VALUES (DEFAULT)");
-    }
-
-    /// <inheritdoc />
     public override string GenerateNextSequenceValueOperation(string name, string? schema)
     {
         var sb = new StringBuilder();
@@ -123,6 +115,14 @@ public class MapepireUpdateSqlGenerator(UpdateSqlGeneratorDependencies dependenc
         commandStringBuilder.Append("NEXT VALUE FOR ");
         SqlGenerationHelper.DelimitIdentifier(commandStringBuilder, name, schema);
     }
+
+    /// <inheritdoc />
+    protected override void AppendValuesHeader(StringBuilder commandStringBuilder, IReadOnlyList<IColumnModification> operations)
+    {
+        commandStringBuilder.AppendLine();
+        // Db2 for i has no "DEFAULT VALUES"; VALUES (DEFAULT) inserts a row of defaults.
+        commandStringBuilder.Append(operations.Count > 0 ? "VALUES " : "VALUES (DEFAULT)");
+    }
 }
 
 /// <summary>
@@ -146,6 +146,11 @@ public class MapepireModificationCommandBatch(ModificationCommandBatchFactoryDep
         await base.ConsumeAsync(reader, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Checks that an UPDATE or DELETE, which returns no result set on Db2 for i, affected exactly one row.
+    /// </summary>
+    /// <param name="reader">The reader for the executed command; its RecordsAffected is the update count.</param>
+    /// <exception cref="DbUpdateConcurrencyException">The row was changed or deleted by someone else.</exception>
     private void CheckRowsAffected(RelationalDataReader reader)
     {
         if (ModificationCommands.Count != 1 || ResultSetMappings[0].HasFlag(ResultSetMapping.HasResultRow))

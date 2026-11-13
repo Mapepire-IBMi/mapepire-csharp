@@ -21,10 +21,13 @@ public sealed class MapepireConnection : DbConnection
     private ConnectionState _state = ConnectionState.Closed;
     private string? _currentSchema;
 
+    /// <summary>Creates a connection with no connection string.</summary>
     public MapepireConnection()
     {
     }
 
+    /// <summary>Creates a connection.</summary>
+    /// <param name="connectionString">The connection string; see <see cref="MapepireConnectionStringBuilder"/>.</param>
     public MapepireConnection(string? connectionString)
     {
         ConnectionString = connectionString;
@@ -66,9 +69,6 @@ public sealed class MapepireConnection : DbConnection
     /// <inheritdoc />
     public override ConnectionState State => _state;
 
-    /// <inheritdoc />
-    protected override DbProviderFactory DbProviderFactory => MapepireFactory.Instance;
-
     /// <summary>The transaction currently active on this connection, if any.</summary>
     internal MapepireTransaction? Transaction { get; private set; }
 
@@ -76,6 +76,20 @@ public sealed class MapepireConnection : DbConnection
 
     internal ServerSession Session
         => _session ?? throw new InvalidOperationException("The connection is not open.");
+
+    /// <inheritdoc />
+    protected override DbProviderFactory DbProviderFactory => MapepireFactory.Instance;
+
+    /// <summary>Closes all idle pooled connections for every connection string.</summary>
+    public static void ClearAllPools() => SessionPool.ClearAll();
+
+    /// <summary>Closes the idle pooled connections of every connection string matching <paramref name="predicate"/>.</summary>
+    /// <param name="predicate">Selects the connection strings whose pools are cleared.</param>
+    public static void ClearPools(Func<MapepireConnectionStringBuilder, bool> predicate) => SessionPool.Clear(predicate);
+
+    /// <summary>Closes all idle pooled connections for the connection string of <paramref name="connection"/>.</summary>
+    /// <param name="connection">The connection whose pool is cleared.</param>
+    public static void ClearPool(MapepireConnection connection) => SessionPool.Clear(connection.ConnectionString);
 
     /// <inheritdoc />
     public override void Open()
@@ -108,9 +122,13 @@ public sealed class MapepireConnection : DbConnection
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// An active transaction is rolled back, the default schema is restored, and the server connection is
+    /// returned to the pool.
+    /// </remarks>
     public override void Close()
     {
-        if (_state == ConnectionState.Closed || _session == null)
+        if (_state == ConnectionState.Closed || _session is null)
         {
             return;
         }
@@ -118,7 +136,7 @@ public sealed class MapepireConnection : DbConnection
         var session = _session;
         try
         {
-            if (Transaction != null)
+            if (Transaction is not null)
             {
                 try
                 {
@@ -126,21 +144,22 @@ public sealed class MapepireConnection : DbConnection
                 }
                 catch
                 {
-                    // Session will be discarded below if it is broken.
+                    // A failed rollback marks the session broken, and the pool then discards it.
                 }
             }
 
-            if (_currentSchema != null && !session.IsBroken)
+            if (_currentSchema is not null && !session.IsBroken)
             {
                 // Restore the default schema before the session goes back to the pool.
                 try
                 {
-                    ExecuteInternal(_settings.DefaultSchema is { Length: > 0 } s
-                        ? "SET SCHEMA " + QuoteIdentifierIfNeeded(s)
+                    ExecuteInternal(_settings.DefaultSchema is { Length: > 0 } defaultSchema
+                        ? "SET SCHEMA " + QuoteIdentifierIfNeeded(defaultSchema)
                         : "SET SCHEMA USER");
                 }
                 catch
                 {
+                    // A session left on another schema must not be reused, so it is closed instead.
                     session.Dispose();
                 }
             }
@@ -176,46 +195,33 @@ public sealed class MapepireConnection : DbConnection
     public new MapepireTransaction BeginTransaction(IsolationLevel isolationLevel)
         => (MapepireTransaction)BeginDbTransaction(isolationLevel);
 
-    /// <inheritdoc />
-    protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
+    /// <summary>Creates a command on this connection, enlisted in the active transaction if there is one.</summary>
+    public new MapepireCommand CreateCommand() => (MapepireCommand)CreateDbCommand();
+
+    /// <summary>Quotes an identifier unless it is an ordinary upper-case Db2 identifier.</summary>
+    /// <param name="identifier">The identifier.</param>
+    /// <returns>The identifier, as it should appear in SQL.</returns>
+    internal static string QuoteIdentifierIfNeeded(string identifier)
     {
-        if (_state != ConnectionState.Open)
+        if (identifier.Length > 0
+            && identifier.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character) || character is '_' or '#' or '@' or '$')
+            && !char.IsAsciiDigit(identifier[0]))
         {
-            throw new InvalidOperationException("The connection is not open.");
+            return identifier;
         }
 
-        if (Transaction != null)
-        {
-            throw new InvalidOperationException("A transaction is already active on this connection. Nested transactions are not supported.");
-        }
-
-        if (_settings.AutoCommit)
-        {
-            // Like JDBC in auto-commit mode: every statement is committed as it runs, so the transaction
-            // object only delimits the work. Commit is a no-op; an explicit Rollback throws.
-            Transaction = new MapepireTransaction(this, isolationLevel, isAutoCommit: true);
-            return Transaction;
-        }
-
-        var level = isolationLevel switch
-        {
-            IsolationLevel.Unspecified => null,
-            IsolationLevel.ReadUncommitted => "READ UNCOMMITTED",
-            IsolationLevel.ReadCommitted => "READ COMMITTED",
-            IsolationLevel.RepeatableRead => "REPEATABLE READ",
-            IsolationLevel.Serializable => "SERIALIZABLE",
-            _ => throw new NotSupportedException($"Isolation level {isolationLevel} is not supported by Db2 for i."),
-        };
-
-        if (level != null)
-        {
-            ExecuteInternal("SET TRANSACTION ISOLATION LEVEL " + level);
-        }
-
-        Transaction = new MapepireTransaction(this, isolationLevel);
-        return Transaction;
+        return "\"" + identifier.Replace("\"", "\"\"") + "\"";
     }
 
+    /// <summary>Ends the active transaction with COMMIT or ROLLBACK.</summary>
+    /// <param name="transaction">The transaction to end; it must be the active one.</param>
+    /// <param name="commit">True to commit, false to roll back.</param>
+    /// <param name="disposing">
+    /// True when called from <c>Dispose</c> or <c>Close</c>; in auto-commit mode the implicit rollback is then not an error.
+    /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// The transaction is not the active one, or an explicit rollback was requested in auto-commit mode.
+    /// </exception>
     internal void EndTransaction(MapepireTransaction transaction, bool commit, bool disposing = false)
     {
         if (!ReferenceEquals(Transaction, transaction))
@@ -253,28 +259,54 @@ public sealed class MapepireConnection : DbConnection
     /// </summary>
     internal void OnCommandCompleted()
     {
-        if (!_settings.AutoCommit && Transaction == null && _session is { IsBroken: false })
+        if (!_settings.AutoCommit && Transaction is null && _session is { IsBroken: false })
         {
             ExecuteInternal("COMMIT");
         }
     }
 
-    private void ExecuteInternal(string sql) => Session.Execute(sql, null, 1);
-
     /// <inheritdoc />
-    public new MapepireCommand CreateCommand() => (MapepireCommand)CreateDbCommand();
+    protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
+    {
+        if (_state != ConnectionState.Open)
+        {
+            throw new InvalidOperationException("The connection is not open.");
+        }
+
+        if (Transaction is not null)
+        {
+            throw new InvalidOperationException("A transaction is already active on this connection. Nested transactions are not supported.");
+        }
+
+        if (_settings.AutoCommit)
+        {
+            // Like JDBC in auto-commit mode: every statement is committed as it runs, so the transaction
+            // object only delimits the work. Commit is a no-op; an explicit Rollback throws.
+            Transaction = new MapepireTransaction(this, isolationLevel, isAutoCommit: true);
+            return Transaction;
+        }
+
+        var level = isolationLevel switch
+        {
+            IsolationLevel.Unspecified => null,
+            IsolationLevel.ReadUncommitted => "READ UNCOMMITTED",
+            IsolationLevel.ReadCommitted => "READ COMMITTED",
+            IsolationLevel.RepeatableRead => "REPEATABLE READ",
+            IsolationLevel.Serializable => "SERIALIZABLE",
+            _ => throw new NotSupportedException($"Isolation level {isolationLevel} is not supported by Db2 for i."),
+        };
+
+        if (level is not null)
+        {
+            ExecuteInternal("SET TRANSACTION ISOLATION LEVEL " + level);
+        }
+
+        Transaction = new MapepireTransaction(this, isolationLevel);
+        return Transaction;
+    }
 
     /// <inheritdoc />
     protected override DbCommand CreateDbCommand() => new MapepireCommand { Connection = this, Transaction = Transaction };
-
-    /// <summary>Closes all idle pooled connections for every connection string.</summary>
-    public static void ClearAllPools() => SessionPool.ClearAll();
-
-    /// <summary>Closes the idle pooled connections of every connection string matching <paramref name="predicate"/>.</summary>
-    public static void ClearPools(Func<MapepireConnectionStringBuilder, bool> predicate) => SessionPool.Clear(predicate);
-
-    /// <summary>Closes all idle pooled connections for the connection string of <paramref name="connection"/>.</summary>
-    public static void ClearPool(MapepireConnection connection) => SessionPool.Clear(connection.ConnectionString);
 
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
@@ -287,14 +319,5 @@ public sealed class MapepireConnection : DbConnection
         base.Dispose(disposing);
     }
 
-    internal static string QuoteIdentifierIfNeeded(string identifier)
-    {
-        if (identifier.Length > 0 && identifier.All(c => char.IsAsciiLetterUpper(c) || char.IsAsciiDigit(c) || c is '_' or '#' or '@' or '$')
-            && !char.IsAsciiDigit(identifier[0]))
-        {
-            return identifier;
-        }
-
-        return "\"" + identifier.Replace("\"", "\"\"") + "\"";
-    }
+    private void ExecuteInternal(string sql) => Session.Execute(sql, null, 1);
 }

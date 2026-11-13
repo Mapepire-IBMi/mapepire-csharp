@@ -3,7 +3,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Mapepire.EntityFrameworkCore.Tests;
 
-public class Blog
+/// <summary>A blog: identity key, unique name, and a one-to-many relationship to posts.</summary>
+public sealed class Blog
 {
     public int Id { get; set; }
 
@@ -19,7 +20,8 @@ public class Blog
     public List<Post> Posts { get; set; } = [];
 }
 
-public class Post
+/// <summary>A post: optional content and date, and a concurrency-checked version.</summary>
+public sealed class Post
 {
     public int Id { get; set; }
 
@@ -35,10 +37,12 @@ public class Post
 
     public int BlogId { get; set; }
 
+    // Required navigation: EF Core sets it when the post is loaded or attached to a blog.
     public Blog Blog { get; set; } = null!;
 }
 
-public class Tag
+/// <summary>A tag with a client-generated <see cref="Guid"/> key.</summary>
+public sealed class Tag
 {
     public Guid Id { get; set; }
 
@@ -46,7 +50,8 @@ public class Tag
     public string Label { get; set; } = string.Empty;
 }
 
-public class BloggingContext(DbContextOptions<BloggingContext> options) : DbContext(options)
+/// <summary>The test model used by the offline and live tests.</summary>
+public sealed class BloggingContext(DbContextOptions<BloggingContext> options) : DbContext(options)
 {
     public DbSet<Blog> Blogs => Set<Blog>();
 
@@ -54,16 +59,13 @@ public class BloggingContext(DbContextOptions<BloggingContext> options) : DbCont
 
     public DbSet<Tag> Tags => Set<Tag>();
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<Blog>().HasIndex(b => b.Name).IsUnique();
-        modelBuilder.Entity<Post>().HasIndex(p => p.PublishedOn);
-    }
-
+    /// <summary>Creates a context for a connection string.</summary>
+    /// <param name="connectionString">The Mapepire connection string.</param>
+    /// <param name="log">Receives each executed or failed SQL command, if set.</param>
     public static BloggingContext Create(string connectionString, Action<string>? log = null)
     {
         var builder = new DbContextOptionsBuilder<BloggingContext>().UseMapepire(connectionString);
-        if (log != null)
+        if (log is not null)
         {
             builder.LogTo(log, [Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted, Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError]);
         }
@@ -74,4 +76,10 @@ public class BloggingContext(DbContextOptions<BloggingContext> options) : DbCont
     /// <summary>A context that can generate SQL but is never opened.</summary>
     public static BloggingContext CreateOffline()
         => Create("Server=example.invalid;User ID=TEST;Password=unused;Default Schema=EFTEST");
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Blog>().HasIndex(b => b.Name).IsUnique();
+        modelBuilder.Entity<Post>().HasIndex(p => p.PublishedOn);
+    }
 }

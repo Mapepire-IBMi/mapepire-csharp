@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 
 namespace Mapepire.EntityFrameworkCore.Metadata.Internal;
@@ -19,20 +18,6 @@ public static class MapepireAnnotationNames
 public class MapepireAnnotationProvider(RelationalAnnotationProviderDependencies dependencies)
     : RelationalAnnotationProvider(dependencies)
 {
-    /// <inheritdoc />
-    public override IEnumerable<IAnnotation> For(IColumn column, bool designTime)
-    {
-        foreach (var annotation in base.For(column, designTime))
-        {
-            yield return annotation;
-        }
-
-        if (IsIdentity(column))
-        {
-            yield return new Annotation(MapepireAnnotationNames.Identity, "1, 1");
-        }
-    }
-
     /// <summary>Whether the column should be created as an identity column.</summary>
     public static bool IsIdentity(IColumn column)
     {
@@ -50,19 +35,39 @@ public class MapepireAnnotationProvider(RelationalAnnotationProviderDependencies
         return false;
     }
 
+    /// <inheritdoc />
+    public override IEnumerable<IAnnotation> For(IColumn column, bool designTime)
+    {
+        foreach (var annotation in base.For(column, designTime))
+        {
+            yield return annotation;
+        }
+
+        if (IsIdentity(column))
+        {
+            yield return new Annotation(MapepireAnnotationNames.Identity, "1, 1");
+        }
+    }
+
+    /// <summary>
+    /// Whether a property is the sole primary key column, generated on add, of an integer type, and has no
+    /// default, computed value, or foreign key that would conflict with an identity column.
+    /// </summary>
+    /// <param name="property">The property.</param>
+    /// <param name="storeObject">The table the property is mapped to.</param>
     internal static bool IsIdentityCandidate(IReadOnlyProperty property, StoreObjectIdentifier storeObject)
     {
         if (property.ValueGenerated != ValueGenerated.OnAdd
             || property.IsForeignKey()
-            || property.GetDefaultValueSql(storeObject) != null
+            || property.GetDefaultValueSql(storeObject) is not null
             || property.TryGetDefaultValue(storeObject, out _)
-            || property.GetComputedColumnSql(storeObject) != null)
+            || property.GetComputedColumnSql(storeObject) is not null)
         {
             return false;
         }
 
         var pk = property.DeclaringType.ContainingEntityType.FindPrimaryKey();
-        if (pk == null || pk.Properties.Count != 1 || pk.Properties[0] != property)
+        if (pk is null || pk.Properties.Count != 1 || pk.Properties[0] != property)
         {
             return false;
         }

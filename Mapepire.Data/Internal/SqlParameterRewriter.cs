@@ -11,13 +11,14 @@ namespace Mapepire.Data.Internal;
 /// </summary>
 internal static class SqlParameterRewriter
 {
-    public readonly record struct Result(string Sql, IReadOnlyList<string>? NamedOrder, int PositionalCount);
-
+    /// <summary>Rewrites named parameter markers to positional markers.</summary>
     /// <param name="sql">The command text.</param>
     /// <param name="isKnownName">Returns true when <c>@name</c> is a parameter of the command.</param>
+    /// <returns>The rewritten statement, and how its markers map to parameters.</returns>
+    /// <exception cref="InvalidOperationException">The statement mixes named and positional markers.</exception>
     public static Result Rewrite(string sql, Func<string, bool> isKnownName)
     {
-        var sb = new StringBuilder(sql.Length);
+        var builder = new StringBuilder(sql.Length);
         List<string>? names = null;
         var positional = 0;
         var i = 0;
@@ -29,7 +30,7 @@ internal static class SqlParameterRewriter
             if (c is '\'' or '"')
             {
                 var end = SkipQuoted(sql, i, c);
-                sb.Append(sql, i, end - i);
+                builder.Append(sql, i, end - i);
                 i = end;
                 continue;
             }
@@ -38,7 +39,7 @@ internal static class SqlParameterRewriter
             {
                 var end = sql.IndexOf('\n', i);
                 end = end < 0 ? sql.Length : end;
-                sb.Append(sql, i, end - i);
+                builder.Append(sql, i, end - i);
                 i = end;
                 continue;
             }
@@ -47,7 +48,7 @@ internal static class SqlParameterRewriter
             {
                 var end = sql.IndexOf("*/", i + 2, StringComparison.Ordinal);
                 end = end < 0 ? sql.Length : end + 2;
-                sb.Append(sql, i, end - i);
+                builder.Append(sql, i, end - i);
                 i = end;
                 continue;
             }
@@ -55,7 +56,7 @@ internal static class SqlParameterRewriter
             if (c == '?')
             {
                 positional++;
-                sb.Append(c);
+                builder.Append(c);
                 i++;
                 continue;
             }
@@ -72,24 +73,49 @@ internal static class SqlParameterRewriter
                 if (isKnownName(name))
                 {
                     (names ??= []).Add(name);
-                    sb.Append('?');
+                    builder.Append('?');
                     i = end;
                     continue;
                 }
             }
 
-            sb.Append(c);
+            builder.Append(c);
             i++;
         }
 
-        if (names != null && positional > 0)
+        if (names is not null && positional > 0)
         {
             throw new InvalidOperationException("Command text mixes named (@name) and positional (?) parameter markers.");
         }
 
-        return new Result(TrimTerminator(sb.ToString()), names, positional);
+        return new Result(TrimTerminator(builder.ToString()), names, positional);
     }
 
+    /// <summary>Removes surrounding whitespace and any trailing statement terminators.</summary>
+    /// <param name="sql">The statement.</param>
+    /// <returns>The trimmed statement.</returns>
+    internal static string TrimTerminator(string sql)
+    {
+        var end = sql.Length;
+        while (end > 0 && (char.IsWhiteSpace(sql[end - 1]) || sql[end - 1] == ';'))
+        {
+            end--;
+        }
+
+        var start = 0;
+        while (start < end && char.IsWhiteSpace(sql[start]))
+        {
+            start++;
+        }
+
+        return sql.Substring(start, end - start);
+    }
+
+    /// <summary>Finds the end of a quoted literal or delimited identifier; a doubled quote is an escaped quote.</summary>
+    /// <param name="sql">The statement.</param>
+    /// <param name="start">The index of the opening quote.</param>
+    /// <param name="quote">The quote character.</param>
+    /// <returns>The index after the closing quote, or the end of the statement if it is unterminated.</returns>
     private static int SkipQuoted(string sql, int start, char quote)
     {
         var i = start + 1;
@@ -112,27 +138,16 @@ internal static class SqlParameterRewriter
         return sql.Length;
     }
 
-    internal static string TrimTerminator(string sql)
-    {
-        var end = sql.Length;
-        while (end > 0 && (char.IsWhiteSpace(sql[end - 1]) || sql[end - 1] == ';'))
-        {
-            end--;
-        }
+    private static bool IsIdentifierStart(char character) => char.IsLetter(character) || character == '_';
 
-        var start = 0;
-        while (start < end && char.IsWhiteSpace(sql[start]))
-        {
-            start++;
-        }
-
-        return sql.Substring(start, end - start);
-    }
-
-    private static bool IsIdentifierStart(char c) => char.IsLetter(c) || c == '_';
-
-    private static bool IsParameterNameChar(char c) => char.IsLetterOrDigit(c) || c == '_';
+    private static bool IsParameterNameChar(char character) => char.IsLetterOrDigit(character) || character == '_';
 
     // Db2 for i ordinary identifiers may contain @, # and $.
-    private static bool IsIdentifierChar(char c) => char.IsLetterOrDigit(c) || c is '_' or '@' or '#' or '$';
+    private static bool IsIdentifierChar(char character) => char.IsLetterOrDigit(character) || character is '_' or '@' or '#' or '$';
+
+    /// <summary>The result of <see cref="Rewrite"/>.</summary>
+    /// <param name="Sql">The statement with positional markers and no trailing terminator.</param>
+    /// <param name="NamedOrder">The parameter names in marker order, or null if the statement used no named markers.</param>
+    /// <param name="PositionalCount">The number of <c>?</c> markers already in the statement.</param>
+    public readonly record struct Result(string Sql, IReadOnlyList<string>? NamedOrder, int PositionalCount);
 }

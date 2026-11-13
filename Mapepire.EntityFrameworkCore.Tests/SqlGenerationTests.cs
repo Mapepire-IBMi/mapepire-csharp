@@ -8,30 +8,22 @@ namespace Mapepire.EntityFrameworkCore.Tests;
 [TestClass]
 public sealed class SqlGenerationTests
 {
-    private static string Sql(Func<BloggingContext, IQueryable> query)
-    {
-        using var context = BloggingContext.CreateOffline();
-        var sql = query(context).ToQueryString();
-        Console.WriteLine(sql);
-        return sql;
-    }
-
     [TestMethod]
-    public void Boolean_column_in_where_becomes_comparison()
+    public void BooleanColumnInWhereBecomesComparison()
     {
         var sql = Sql(c => c.Blogs.Where(b => b.IsActive));
         StringAssert.Contains(sql, "WHERE \"b\".\"IsActive\" = 1");
     }
 
     [TestMethod]
-    public void Negated_boolean_column_in_where()
+    public void NegatedBooleanColumnInWhere()
     {
         var sql = Sql(c => c.Blogs.Where(b => !b.IsActive));
         StringAssert.Matches(sql, new System.Text.RegularExpressions.Regex("\"b\"\\.\"IsActive\" (= 0|<> 1)|NOT \\(\"b\"\\.\"IsActive\" = 1\\)"));
     }
 
     [TestMethod]
-    public void Predicate_in_projection_becomes_case()
+    public void PredicateInProjectionBecomesCase()
     {
         var sql = Sql(c => c.Blogs.Select(b => new { b.Id, Popular = b.Rating > 3 }));
         StringAssert.Contains(sql, "CASE");
@@ -40,7 +32,7 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void Skip_and_take_are_inlined_as_offset_fetch()
+    public void SkipAndTakeAreInlinedAsOffsetFetch()
     {
         var skip = 10;
         var take = 5;
@@ -49,14 +41,14 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void Take_only_uses_fetch_first()
+    public void TakeOnlyUsesFetchFirst()
     {
         var sql = Sql(c => c.Blogs.OrderBy(b => b.Id).Take(3));
         StringAssert.Contains(sql, "FETCH FIRST 3 ROWS ONLY");
     }
 
     [TestMethod]
-    public void Take_zero_returns_no_rows_without_fetch_clause()
+    public void TakeZeroReturnsNoRowsWithoutFetchClause()
     {
         var take = 0;
         var sql = Sql(c => c.Blogs.OrderBy(b => b.Id).Take(take));
@@ -65,7 +57,7 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void Parameters_are_cast_to_their_store_type()
+    public void ParametersAreCastToTheirStoreType()
     {
         var name = "abc";
         var sql = Sql(c => c.Blogs.Where(b => b.Name == name));
@@ -74,7 +66,7 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void Subquery_any_in_projection_is_valid()
+    public void SubqueryAnyInProjectionIsValid()
     {
         var sql = Sql(c => c.Blogs.Select(b => new { b.Id, HasPosts = b.Posts.Any() }));
         // Db2 for i rejects EXISTS directly inside CASE WHEN (SQL0104).
@@ -83,28 +75,28 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void String_concatenation_uses_double_pipe()
+    public void StringConcatenationUsesDoublePipe()
     {
         var sql = Sql(c => c.Blogs.Select(b => b.Name + "!"));
         StringAssert.Contains(sql, "||");
     }
 
     [TestMethod]
-    public void Modulo_uses_mod_function()
+    public void ModuloUsesModFunction()
     {
         var sql = Sql(c => c.Blogs.Where(b => b.Id % 2 == 0));
         StringAssert.Contains(sql, "MOD(\"b\".\"Id\", 2)");
     }
 
     [TestMethod]
-    public void Contains_with_constant_uses_escaped_like()
+    public void ContainsWithConstantUsesEscapedLike()
     {
         var sql = Sql(c => c.Blogs.Where(b => b.Name.Contains("50%")));
         StringAssert.Contains(sql, "LIKE '%50\\%%' ESCAPE '\\'");
     }
 
     [TestMethod]
-    public void Contains_with_parameter_uses_locate()
+    public void ContainsWithParameterUsesLocate()
     {
         var term = "x";
         var sql = Sql(c => c.Blogs.Where(b => b.Name.Contains(term)));
@@ -112,15 +104,16 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void StartsWith_with_parameter_uses_left()
+    public void StartsWithWithParameterUsesLeft()
     {
         var prefix = "x";
         var sql = Sql(c => c.Blogs.Where(b => b.Name.StartsWith(prefix)));
         StringAssert.Contains(sql, "LEFT(");
     }
 
+    /// <summary>String methods and members translate to their Db2 for i functions.</summary>
     [TestMethod]
-    public void String_functions_are_translated()
+    public void StringFunctionsAreTranslated()
     {
         var sql = Sql(c => c.Blogs.Select(b => new
         {
@@ -140,7 +133,7 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void Date_parts_are_translated()
+    public void DatePartsAreTranslated()
     {
         var sql = Sql(c => c.Blogs.Where(b => b.CreatedAt.Year == 2024 && b.CreatedAt < DateTime.Now));
         StringAssert.Contains(sql, "YEAR(\"b\".\"CreatedAt\")");
@@ -148,14 +141,14 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void DateTime_literal_uses_db2_timestamp_format()
+    public void DateTimeLiteralUsesDb2TimestampFormat()
     {
         var sql = Sql(c => c.Blogs.Where(b => b.CreatedAt > new DateTime(2024, 1, 2, 3, 4, 5)));
         StringAssert.Contains(sql, "CAST('2024-01-02-03.04.05.000000' AS TIMESTAMP)");
     }
 
     [TestMethod]
-    public void Contains_on_local_list_uses_in()
+    public void ContainsOnLocalListUsesIn()
     {
         var ids = new List<int> { 1, 2, 3 };
         var sql = Sql(c => c.Blogs.Where(b => ids.Contains(b.Id)));
@@ -164,9 +157,17 @@ public sealed class SqlGenerationTests
     }
 
     [TestMethod]
-    public void Include_generates_left_join()
+    public void IncludeGeneratesLeftJoin()
     {
         var sql = Sql(c => c.Blogs.Include(b => b.Posts));
         StringAssert.Contains(sql, "LEFT JOIN \"Posts\"");
+    }
+
+    private static string Sql(Func<BloggingContext, IQueryable> query)
+    {
+        using var context = BloggingContext.CreateOffline();
+        var sql = query(context).ToQueryString();
+        Console.WriteLine(sql);
+        return sql;
     }
 }

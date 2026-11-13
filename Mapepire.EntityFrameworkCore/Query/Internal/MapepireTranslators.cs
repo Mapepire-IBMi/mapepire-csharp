@@ -3,14 +3,15 @@ namespace Mapepire.EntityFrameworkCore.Query.Internal;
 /// <summary>Registers the Db2 for i method call translators.</summary>
 public class MapepireMethodCallTranslatorProvider : RelationalMethodCallTranslatorProvider
 {
+    /// <summary>Creates the provider and registers the Db2 for i translators after the relational ones.</summary>
     public MapepireMethodCallTranslatorProvider(RelationalMethodCallTranslatorProviderDependencies dependencies)
         : base(dependencies)
     {
-        var f = dependencies.SqlExpressionFactory;
+        var sqlExpressionFactory = dependencies.SqlExpressionFactory;
         AddTranslators(
         [
-            new MapepireStringMethodTranslator(f),
-            new MapepireMathTranslator(f),
+            new MapepireStringMethodTranslator(sqlExpressionFactory),
+            new MapepireMathTranslator(sqlExpressionFactory),
         ]);
     }
 }
@@ -18,22 +19,25 @@ public class MapepireMethodCallTranslatorProvider : RelationalMethodCallTranslat
 /// <summary>Registers the Db2 for i member translators.</summary>
 public class MapepireMemberTranslatorProvider : RelationalMemberTranslatorProvider
 {
+    /// <summary>Creates the provider and registers the Db2 for i translators after the relational ones.</summary>
     public MapepireMemberTranslatorProvider(RelationalMemberTranslatorProviderDependencies dependencies)
         : base(dependencies)
     {
-        var f = dependencies.SqlExpressionFactory;
+        var sqlExpressionFactory = dependencies.SqlExpressionFactory;
         AddTranslators(
         [
-            new MapepireStringMemberTranslator(f),
-            new MapepireDateTimeMemberTranslator(f),
+            new MapepireStringMemberTranslator(sqlExpressionFactory),
+            new MapepireDateTimeMemberTranslator(sqlExpressionFactory),
         ]);
     }
 }
 
 /// <summary>Translates <see cref="string"/> instance and static methods.</summary>
-public class MapepireStringMethodTranslator(ISqlExpressionFactory f) : IMethodCallTranslator
+public class MapepireStringMethodTranslator(ISqlExpressionFactory sqlExpressionFactory) : IMethodCallTranslator
 {
     private const char LikeEscapeChar = '\\';
+
+    // ApplyTypeMapping returns null only for a null input, and the inputs below are never null, so "!" is safe.
 
     /// <inheritdoc />
     public virtual SqlExpression? Translate(
@@ -47,14 +51,14 @@ public class MapepireStringMethodTranslator(ISqlExpressionFactory f) : IMethodCa
             return null;
         }
 
-        if (instance == null)
+        if (instance is null)
         {
             if (method.Name == nameof(string.IsNullOrWhiteSpace) && arguments.Count == 1)
             {
-                var arg = arguments[0];
-                return f.OrElse(
-                    f.IsNull(arg),
-                    f.Equal(Fn("TRIM", typeof(string), arg.TypeMapping, arg), f.Constant(string.Empty, arg.TypeMapping)));
+                var argument = arguments[0];
+                return sqlExpressionFactory.OrElse(
+                    sqlExpressionFactory.IsNull(argument),
+                    sqlExpressionFactory.Equal(CreateFunction("TRIM", typeof(string), argument.TypeMapping, argument), sqlExpressionFactory.Constant(string.Empty, argument.TypeMapping)));
             }
 
             return null;
@@ -66,55 +70,55 @@ public class MapepireStringMethodTranslator(ISqlExpressionFactory f) : IMethodCa
         switch (method.Name)
         {
             case nameof(string.ToUpper) when arguments.Count == 0:
-                return Fn("UPPER", typeof(string), instance.TypeMapping, instance);
+                return CreateFunction("UPPER", typeof(string), instance.TypeMapping, instance);
 
             case nameof(string.ToLower) when arguments.Count == 0:
-                return Fn("LOWER", typeof(string), instance.TypeMapping, instance);
+                return CreateFunction("LOWER", typeof(string), instance.TypeMapping, instance);
 
             case nameof(string.Trim) when arguments.Count == 0:
-                return Fn("TRIM", typeof(string), instance.TypeMapping, instance);
+                return CreateFunction("TRIM", typeof(string), instance.TypeMapping, instance);
 
             case nameof(string.TrimStart) when arguments.Count == 0:
-                return Fn("LTRIM", typeof(string), instance.TypeMapping, instance);
+                return CreateFunction("LTRIM", typeof(string), instance.TypeMapping, instance);
 
             case nameof(string.TrimEnd) when arguments.Count == 0:
-                return Fn("RTRIM", typeof(string), instance.TypeMapping, instance);
+                return CreateFunction("RTRIM", typeof(string), instance.TypeMapping, instance);
 
             case nameof(string.Substring) when arguments.Count is 1 or 2 && parameters.All(p => p.ParameterType == typeof(int)):
             {
-                var start = f.Add(arguments[0], f.Constant(1));
+                var start = sqlExpressionFactory.Add(arguments[0], sqlExpressionFactory.Constant(1));
                 return arguments.Count == 1
-                    ? Fn("SUBSTR", typeof(string), instance.TypeMapping, instance, start)
-                    : Fn("SUBSTR", typeof(string), instance.TypeMapping, instance, start, arguments[1]);
+                    ? CreateFunction("SUBSTR", typeof(string), instance.TypeMapping, instance, start)
+                    : CreateFunction("SUBSTR", typeof(string), instance.TypeMapping, instance, start, arguments[1]);
             }
 
             case nameof(string.Replace) when arguments.Count == 2 && stringArgs:
             {
                 var mapping = Microsoft.EntityFrameworkCore.Query.ExpressionExtensions.InferTypeMapping(instance, arguments[0], arguments[1]);
-                return Fn(
+                return CreateFunction(
                     "REPLACE", typeof(string), mapping,
-                    f.ApplyTypeMapping(instance, mapping)!, f.ApplyTypeMapping(arguments[0], mapping)!, f.ApplyTypeMapping(arguments[1], mapping)!);
+                    sqlExpressionFactory.ApplyTypeMapping(instance, mapping)!, sqlExpressionFactory.ApplyTypeMapping(arguments[0], mapping)!, sqlExpressionFactory.ApplyTypeMapping(arguments[1], mapping)!);
             }
 
             case nameof(string.IndexOf) when arguments.Count == 1 && stringArgs:
             {
                 var mapping = Microsoft.EntityFrameworkCore.Query.ExpressionExtensions.InferTypeMapping(instance, arguments[0]);
-                var locate = Fn("LOCATE", typeof(int), null, f.ApplyTypeMapping(arguments[0], mapping)!, f.ApplyTypeMapping(instance, mapping)!);
-                return f.Subtract(locate, f.Constant(1));
+                var locate = CreateFunction("LOCATE", typeof(int), null, sqlExpressionFactory.ApplyTypeMapping(arguments[0], mapping)!, sqlExpressionFactory.ApplyTypeMapping(instance, mapping)!);
+                return sqlExpressionFactory.Subtract(locate, sqlExpressionFactory.Constant(1));
             }
 
             case nameof(string.Contains) when arguments.Count == 1 && stringArgs:
             {
                 var mapping = Microsoft.EntityFrameworkCore.Query.ExpressionExtensions.InferTypeMapping(instance, arguments[0]);
-                var pattern = f.ApplyTypeMapping(arguments[0], mapping)!;
-                if (pattern is SqlConstantExpression { Value: string s })
+                var pattern = sqlExpressionFactory.ApplyTypeMapping(arguments[0], mapping)!;
+                if (pattern is SqlConstantExpression { Value: string text })
                 {
-                    return f.Like(f.ApplyTypeMapping(instance, mapping)!, f.Constant($"%{EscapeLike(s)}%", mapping), f.Constant(LikeEscapeChar.ToString()));
+                    return sqlExpressionFactory.Like(sqlExpressionFactory.ApplyTypeMapping(instance, mapping)!, sqlExpressionFactory.Constant($"%{EscapeLike(text)}%", mapping), sqlExpressionFactory.Constant(LikeEscapeChar.ToString()));
                 }
 
-                return f.GreaterThan(
-                    Fn("LOCATE", typeof(int), null, pattern, f.ApplyTypeMapping(instance, mapping)!),
-                    f.Constant(0));
+                return sqlExpressionFactory.GreaterThan(
+                    CreateFunction("LOCATE", typeof(int), null, pattern, sqlExpressionFactory.ApplyTypeMapping(instance, mapping)!),
+                    sqlExpressionFactory.Constant(0));
             }
 
             case nameof(string.StartsWith) when arguments.Count == 1 && stringArgs:
@@ -127,32 +131,39 @@ public class MapepireStringMethodTranslator(ISqlExpressionFactory f) : IMethodCa
         return null;
     }
 
+    private static string EscapeLike(string text)
+        => text.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
+
+    /// <summary>
+    /// Translates StartsWith/EndsWith: to LIKE for a constant pattern, otherwise to
+    /// <c>LEFT</c>/<c>RIGHT(instance, LENGTH(pattern)) = pattern</c>, which needs no escaping of the pattern.
+    /// </summary>
+    /// <param name="instance">The string being tested.</param>
+    /// <param name="pattern">The prefix or suffix.</param>
+    /// <param name="startsWith">True for StartsWith, false for EndsWith.</param>
+    /// <returns>The translated condition.</returns>
     private SqlExpression TranslateStartsEndsWith(SqlExpression instance, SqlExpression pattern, bool startsWith)
     {
         var mapping = Microsoft.EntityFrameworkCore.Query.ExpressionExtensions.InferTypeMapping(instance, pattern);
-        instance = f.ApplyTypeMapping(instance, mapping)!;
-        pattern = f.ApplyTypeMapping(pattern, mapping)!;
+        var mappedInstance = sqlExpressionFactory.ApplyTypeMapping(instance, mapping)!;
+        var mappedPattern = sqlExpressionFactory.ApplyTypeMapping(pattern, mapping)!;
 
-        if (pattern is SqlConstantExpression { Value: string s })
+        if (mappedPattern is SqlConstantExpression { Value: string text })
         {
-            var like = startsWith ? EscapeLike(s) + "%" : "%" + EscapeLike(s);
-            return f.Like(instance, f.Constant(like, mapping), f.Constant(LikeEscapeChar.ToString()));
+            var like = startsWith ? EscapeLike(text) + "%" : "%" + EscapeLike(text);
+            return sqlExpressionFactory.Like(mappedInstance, sqlExpressionFactory.Constant(like, mapping), sqlExpressionFactory.Constant(LikeEscapeChar.ToString()));
         }
 
-        // LEFT/RIGHT(instance, LENGTH(pattern)) = pattern
-        var length = Fn("LENGTH", typeof(int), null, pattern);
-        return f.Equal(Fn(startsWith ? "LEFT" : "RIGHT", typeof(string), mapping, instance, length), pattern);
+        var length = CreateFunction("LENGTH", typeof(int), null, mappedPattern);
+        return sqlExpressionFactory.Equal(CreateFunction(startsWith ? "LEFT" : "RIGHT", typeof(string), mapping, mappedInstance, length), mappedPattern);
     }
 
-    private static string EscapeLike(string s)
-        => s.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
-
-    private SqlExpression Fn(string name, Type type, RelationalTypeMapping? mapping, params SqlExpression[] args)
-        => f.Function(name, args, nullable: true, argumentsPropagateNullability: args.Select(_ => true), type, mapping);
+    private SqlExpression CreateFunction(string name, Type type, RelationalTypeMapping? mapping, params SqlExpression[] arguments)
+        => sqlExpressionFactory.Function(name, arguments, nullable: true, argumentsPropagateNullability: arguments.Select(_ => true), type, mapping);
 }
 
 /// <summary>Translates <see cref="string.Length"/>.</summary>
-public class MapepireStringMemberTranslator(ISqlExpressionFactory f) : IMemberTranslator
+public class MapepireStringMemberTranslator(ISqlExpressionFactory sqlExpressionFactory) : IMemberTranslator
 {
     /// <inheritdoc />
     public virtual SqlExpression? Translate(
@@ -160,13 +171,13 @@ public class MapepireStringMemberTranslator(ISqlExpressionFactory f) : IMemberTr
         MemberInfo member,
         Type returnType,
         IDiagnosticsLogger<DbLoggerCategory.Query> logger)
-        => instance != null && member.DeclaringType == typeof(string) && member.Name == nameof(string.Length)
-            ? f.Function("LENGTH", [instance], nullable: true, argumentsPropagateNullability: [true], typeof(int))
+        => instance is not null && member.DeclaringType == typeof(string) && member.Name == nameof(string.Length)
+            ? sqlExpressionFactory.Function("LENGTH", [instance], nullable: true, argumentsPropagateNullability: [true], typeof(int))
             : null;
 }
 
 /// <summary>Translates <see cref="Math"/> methods.</summary>
-public class MapepireMathTranslator(ISqlExpressionFactory f) : IMethodCallTranslator
+public class MapepireMathTranslator(ISqlExpressionFactory sqlExpressionFactory) : IMethodCallTranslator
 {
     /// <inheritdoc />
     public virtual SqlExpression? Translate(
@@ -199,7 +210,7 @@ public class MapepireMathTranslator(ISqlExpressionFactory f) : IMethodCallTransl
             _ => null,
         };
 
-        if (name == null)
+        if (name is null)
         {
             return null;
         }
@@ -207,16 +218,16 @@ public class MapepireMathTranslator(ISqlExpressionFactory f) : IMethodCallTransl
         var args = arguments.ToList();
         if (name is "ROUND" or "TRUNCATE" && args.Count == 1)
         {
-            args.Add(f.ApplyDefaultTypeMapping(f.Constant(0))!);
+            args.Add(sqlExpressionFactory.ApplyDefaultTypeMapping(sqlExpressionFactory.Constant(0))!);
         }
 
         var typeMapping = name is "SIGN" ? null : args[0].TypeMapping;
-        return f.Function(name, args, nullable: true, argumentsPropagateNullability: args.Select(_ => true), method.ReturnType, typeMapping);
+        return sqlExpressionFactory.Function(name, args, nullable: true, argumentsPropagateNullability: args.Select(_ => true), method.ReturnType, typeMapping);
     }
 }
 
 /// <summary>Translates <see cref="DateTime"/> / <see cref="DateOnly"/> members.</summary>
-public class MapepireDateTimeMemberTranslator(ISqlExpressionFactory f) : IMemberTranslator
+public class MapepireDateTimeMemberTranslator(ISqlExpressionFactory sqlExpressionFactory) : IMemberTranslator
 {
     /// <inheritdoc />
     public virtual SqlExpression? Translate(
@@ -231,20 +242,20 @@ public class MapepireDateTimeMemberTranslator(ISqlExpressionFactory f) : IMember
             return null;
         }
 
-        if (instance == null)
+        if (instance is null)
         {
             return member.Name switch
             {
                 nameof(DateTime.Now) when declaringType == typeof(DateTime)
-                    => f.NiladicFunction("CURRENT TIMESTAMP", nullable: false, returnType),
+                    => sqlExpressionFactory.NiladicFunction("CURRENT TIMESTAMP", nullable: false, returnType),
                 nameof(DateTime.UtcNow) when declaringType == typeof(DateTime)
-                    => f.Subtract(
-                        f.NiladicFunction("CURRENT TIMESTAMP", nullable: false, returnType),
-                        f.NiladicFunction("CURRENT TIMEZONE", nullable: false, typeof(decimal))),
+                    => sqlExpressionFactory.Subtract(
+                        sqlExpressionFactory.NiladicFunction("CURRENT TIMESTAMP", nullable: false, returnType),
+                        sqlExpressionFactory.NiladicFunction("CURRENT TIMEZONE", nullable: false, typeof(decimal))),
                 nameof(DateTime.Today) when declaringType == typeof(DateTime)
-                    => f.Function(
+                    => sqlExpressionFactory.Function(
                         "TIMESTAMP",
-                        [f.NiladicFunction("CURRENT DATE", nullable: false, typeof(DateTime)), f.ApplyDefaultTypeMapping(f.Constant("00:00:00"))!],
+                        [sqlExpressionFactory.NiladicFunction("CURRENT DATE", nullable: false, typeof(DateTime)), sqlExpressionFactory.ApplyDefaultTypeMapping(sqlExpressionFactory.Constant("00:00:00"))!],
                         nullable: false,
                         argumentsPropagateNullability: [false, false],
                         returnType),
@@ -264,16 +275,16 @@ public class MapepireDateTimeMemberTranslator(ISqlExpressionFactory f) : IMember
             _ => null,
         };
 
-        if (part != null)
+        if (part is not null)
         {
-            return f.Function(part, [instance], nullable: true, argumentsPropagateNullability: [true], returnType);
+            return sqlExpressionFactory.Function(part, [instance], nullable: true, argumentsPropagateNullability: [true], returnType);
         }
 
         if (member.Name == nameof(DateTime.Date) && declaringType == typeof(DateTime))
         {
-            return f.Function(
+            return sqlExpressionFactory.Function(
                 "TIMESTAMP",
-                [f.Function("DATE", [instance], nullable: true, argumentsPropagateNullability: [true], typeof(DateTime)), f.ApplyDefaultTypeMapping(f.Constant("00:00:00"))!],
+                [sqlExpressionFactory.Function("DATE", [instance], nullable: true, argumentsPropagateNullability: [true], typeof(DateTime)), sqlExpressionFactory.ApplyDefaultTypeMapping(sqlExpressionFactory.Constant("00:00:00"))!],
                 nullable: true,
                 argumentsPropagateNullability: [true, false],
                 returnType,

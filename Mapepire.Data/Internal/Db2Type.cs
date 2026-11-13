@@ -55,6 +55,11 @@ internal sealed record Db2Type(string Name, Db2TypeKind Kind)
         _ => DbType.String,
     };
 
+    /// <summary>
+    /// Classifies a Db2 type name such as <c>VARCHAR</c>, <c>DECIMAL(10,2)</c> or <c>CHAR () FOR BIT DATA</c>.
+    /// </summary>
+    /// <param name="typeName">The type name from result metadata; null is treated as VARCHAR.</param>
+    /// <returns>The type; unknown names are treated as strings.</returns>
     public static Db2Type FromName(string? typeName)
     {
         var name = (typeName ?? "VARCHAR").Trim().ToUpperInvariant();
