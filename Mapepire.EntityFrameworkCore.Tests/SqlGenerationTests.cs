@@ -77,8 +77,9 @@ public sealed class SqlGenerationTests
     public void Subquery_any_in_projection_is_valid()
     {
         var sql = Sql(c => c.Blogs.Select(b => new { b.Id, HasPosts = b.Posts.Any() }));
-        StringAssert.Contains(sql, "CASE");
-        StringAssert.Contains(sql, "EXISTS");
+        // Db2 for i rejects EXISTS directly inside CASE WHEN (SQL0104).
+        StringAssert.Contains(sql, "WHEN (SELECT 1 FROM SYSIBM.SYSDUMMY1 WHERE EXISTS (");
+        StringAssert.Contains(sql, ") = 1 THEN 1");
     }
 
     [TestMethod]

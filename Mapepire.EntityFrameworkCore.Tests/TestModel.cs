@@ -60,8 +60,16 @@ public class BloggingContext(DbContextOptions<BloggingContext> options) : DbCont
         modelBuilder.Entity<Post>().HasIndex(p => p.PublishedOn);
     }
 
-    public static BloggingContext Create(string connectionString)
-        => new(new DbContextOptionsBuilder<BloggingContext>().UseMapepire(connectionString).Options);
+    public static BloggingContext Create(string connectionString, Action<string>? log = null)
+    {
+        var builder = new DbContextOptionsBuilder<BloggingContext>().UseMapepire(connectionString);
+        if (log != null)
+        {
+            builder.LogTo(log, [Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted, Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError]);
+        }
+
+        return new(builder.Options);
+    }
 
     /// <summary>A context that can generate SQL but is never opened.</summary>
     public static BloggingContext CreateOffline()

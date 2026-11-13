@@ -270,6 +270,9 @@ public sealed class MapepireConnection : DbConnection
     /// <summary>Closes all idle pooled connections for every connection string.</summary>
     public static void ClearAllPools() => SessionPool.ClearAll();
 
+    /// <summary>Closes the idle pooled connections of every connection string matching <paramref name="predicate"/>.</summary>
+    public static void ClearPools(Func<MapepireConnectionStringBuilder, bool> predicate) => SessionPool.Clear(predicate);
+
     /// <summary>Closes all idle pooled connections for the connection string of <paramref name="connection"/>.</summary>
     public static void ClearPool(MapepireConnection connection) => SessionPool.Clear(connection.ConnectionString);
 
