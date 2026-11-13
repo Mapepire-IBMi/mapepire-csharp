@@ -159,5 +159,9 @@ public sealed class MapepireMigrationDatabaseLock(
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
-        => await releaseLockCommand.ExecuteNonQueryAsync(relationalCommandParameters, cancellationToken).ConfigureAwait(false);
+    {
+        // Keep the constructor's optional token for compatibility, but never cancel lock release.
+        _ = cancellationToken;
+        await releaseLockCommand.ExecuteNonQueryAsync(relationalCommandParameters, CancellationToken.None).ConfigureAwait(false);
+    }
 }
