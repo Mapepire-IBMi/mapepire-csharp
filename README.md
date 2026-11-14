@@ -30,7 +30,7 @@ The repository also contains an ADO.NET provider and an Entity Framework Core (E
 | --- | --- |
 | `Mapepire.Data` | ADO.NET provider: `MapepireConnection`, `MapepireCommand`, `MapepireDataReader`, `MapepireTransaction`, `MapepireFactory`. |
 | `Mapepire.EntityFrameworkCore` | EF Core provider. Configure it with `UseMapepire(...)`. |
-| `Mapepire.EntityFrameworkCore.Tests` | Offline SQL-generation tests, plus live tests that run when a Mapepire server is configured. |
+| `Mapepire.EntityFrameworkCore.Tests` | Offline tests (SQL generation, plus connection and migration-lock behavior against the Mapepire mock server), and live tests that run when a Mapepire server is configured. |
 
 ### Usage
 
@@ -104,4 +104,4 @@ Parameters can be named (`@id`) or positional (`?`). Named markers are rewritten
 dotnet test Mapepire.EntityFrameworkCore.Tests
 ```
 
-Offline tests always run. Live tests use `UnitTests/unitTestSettings.json`, which the `MAPEPIRE_HOST`, `MAPEPIRE_PORT`, `MAPEPIRE_USER` and `MAPEPIRE_PASSWORD` environment variables override. Each run creates a temporary `MPEFxxxxxx` schema and drops it afterwards. If no server can be reached, the live tests are reported as skipped (inconclusive).
+Offline tests always run. Connection and migration-lock tests run against the [Mapepire mock server](https://github.com/Mapepire-IBMi/mapepire-mockserver), which the build downloads and checks against its SHA-256 digest; they need Java 8 or later under `JAVA_HOME` or on the `PATH`. Live tests use `UnitTests/unitTestSettings.json`, which the `MAPEPIRE_HOST`, `MAPEPIRE_PORT`, `MAPEPIRE_USER` and `MAPEPIRE_PASSWORD` environment variables override. Each run creates a temporary `MPEFxxxxxx` schema and drops it afterwards. If no server can be reached, the live tests are reported as skipped (inconclusive).

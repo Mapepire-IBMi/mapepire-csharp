@@ -3,7 +3,7 @@ using Mapepire.Data;
 
 namespace Mapepire.EntityFrameworkCore.Tests;
 
-/// <summary>Pool reuse after transaction completion, using simulated SQL replies over a real local connection.</summary>
+/// <summary>Pool reuse after transaction completion, against the Mapepire mock server.</summary>
 [TestClass]
 public sealed class ConnectionLifecycleTests
 {
@@ -14,9 +14,11 @@ public sealed class ConnectionLifecycleTests
     [DataRow("commit")]
     public async Task FailedTransactionCompletionDiscardsSession(string completion)
     {
-        await using var server = new OfflineMapepireServer(sql => sql is "COMMIT" or "ROLLBACK"
-            ? new { success = false, error = "Simulated transaction failure", sql_rc = -901, sql_state = "58004" }
-            : OfflineMapepireServer.Success());
+        await using var server = await MockMapepireServer.StartAsync(new
+        {
+            pattern = "commit|rollback",
+            error = new { message = "Simulated transaction failure", sql_state = "58004", sql_rc = -901 },
+        });
         using var connection = new MapepireConnection(server.ConnectionString);
         try
         {
@@ -53,7 +55,8 @@ public sealed class ConnectionLifecycleTests
     [TestMethod]
     public async Task SuccessfulRollbackKeepsSessionReusable()
     {
-        await using var server = new OfflineMapepireServer(_ => OfflineMapepireServer.Success());
+        // The mock server's built-in rules let SET, COMMIT and ROLLBACK succeed.
+        await using var server = await MockMapepireServer.StartAsync();
         using var connection = new MapepireConnection(server.ConnectionString);
         try
         {
