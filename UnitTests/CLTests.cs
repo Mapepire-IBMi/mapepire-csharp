@@ -61,7 +61,13 @@ public sealed class  CLTests
         Assert.IsTrue(result.Data.Count > 0);
         Assert.AreEqual(-443, result.SqlRc);
         Assert.AreEqual("38501", result.SqlState);
-        Assert.AreEqual("[CPF0006] Errors occurred in command.", result.Error);
+        // Server versions word the error differently.
+        string[] expectedErrors =
+        [
+            "[CPF0006] Errors occurred in command.",
+            "CL command execution failed: [CPF0001] Error found on *N command.",
+        ];
+        CollectionAssert.Contains(expectedErrors, result.Error);
     }
 }
 
