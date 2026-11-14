@@ -48,6 +48,7 @@ jobs:
         MAPEPIRE_PORT: ${{ secrets.MAPEPIRE_PORT }}
         MAPEPIRE_USER: ${{ secrets.MAPEPIRE_USER }}
         MAPEPIRE_PASSWORD: ${{ secrets.MAPEPIRE_PASSWORD }}
+        MSBUILDDISABLENODEREUSE: 1
         MAPEPIRE_REJECT_UNAUTHORIZED: "false"
     - name: list .exe artifacts
       run: find staging -name \*.exe
