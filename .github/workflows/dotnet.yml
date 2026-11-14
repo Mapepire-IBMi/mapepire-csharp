@@ -23,14 +23,23 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 9.0.x
+    # The provider tests run against the Mapepire mock server, a Java program the test build downloads.
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
     - name: Restore dependencies
       run: dotnet restore
     - name: Create staging directory
       run: mkdir -p ./staging
     - name: Build
       run: dotnet build --output ./staging --no-restore
+    # Needs no IBM i, so this step also runs for pull requests from forks.
+    - name: Test with mock server
+      run: dotnet test Mapepire.EntityFrameworkCore.Tests/Mapepire.EntityFrameworkCore.Tests.csproj --output ./staging --no-build --verbosity normal
     # This step won't run when coming from a fork
-    - name: Test
+    - name: Test with IBM i
       run: dotnet test --output ./staging --no-build --verbosity normal
       if: contains(env.MAPEPIRE_HOST, '.')
       env:
