@@ -3,3 +3,9 @@ io/obj/**
 UnitTests/bin/**
 UnitTests/obj/**
 
+Mapepire.Data/bin/**
+Mapepire.Data/obj/**
+Mapepire.EntityFrameworkCore/bin/**
+Mapepire.EntityFrameworkCore/obj/**
+Mapepire.EntityFrameworkCore.Tests/bin/**
+Mapepire.EntityFrameworkCore.Tests/obj/**

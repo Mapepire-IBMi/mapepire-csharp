@@ -1,0 +1,17 @@
+global using System.Data;
+global using System.Data.Common;
+global using System.Linq.Expressions;
+global using System.Reflection;
+global using System.Text;
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.EntityFrameworkCore.Diagnostics;
+global using Microsoft.EntityFrameworkCore.Infrastructure;
+global using Microsoft.EntityFrameworkCore.Metadata;
+global using Microsoft.EntityFrameworkCore.Migrations;
+global using Microsoft.EntityFrameworkCore.Migrations.Operations;
+global using Microsoft.EntityFrameworkCore.Query;
+global using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
+global using Microsoft.EntityFrameworkCore.Storage;
+global using Microsoft.EntityFrameworkCore.Update;
+global using Microsoft.Extensions.DependencyInjection;
+global using Mapepire.Data;

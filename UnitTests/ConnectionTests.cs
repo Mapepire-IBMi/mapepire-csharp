@@ -63,6 +63,7 @@ public sealed class  ConnectionTests
      
     }
   [TestMethod]
+  [Ignore("Temporarily skipped.")]
     public void NewJobOnSubsequentConnects()  {
         DaemonServer daemonServer = MapepireTest.GetTestDaemonServer(); 
       

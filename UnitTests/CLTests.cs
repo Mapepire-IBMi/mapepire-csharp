@@ -56,12 +56,18 @@ public sealed class  CLTests
         job.Close();
 
         Assert.IsFalse(result.Success);
-        Assert.IsTrue(result.IsDone);
+        // This is no longer returned by the Mapepire server: Assert.IsTrue(result.IsDone);
         Assert.IsNotNull(result.Id);
         Assert.IsTrue(result.Data.Count > 0);
         Assert.AreEqual(-443, result.SqlRc);
         Assert.AreEqual("38501", result.SqlState);
-        Assert.AreEqual("[CPF0006] Errors occurred in command.", result.Error);
+        // Server versions word the error differently.
+        string[] expectedErrors =
+        [
+            "[CPF0006] Errors occurred in command.",
+            "CL command execution failed: [CPF0001] Error found on *N command.",
+        ];
+        CollectionAssert.Contains(expectedErrors, result.Error);
     }
 }
 
