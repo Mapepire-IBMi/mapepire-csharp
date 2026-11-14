@@ -116,7 +116,10 @@ internal sealed class OfflineMapepireServer : IAsyncDisposable
                         "sql" => _execute(root.GetProperty("sql").GetString()!),
                         _ => throw new InvalidOperationException("Unexpected test protocol request."),
                     };
-                    await socket.SendAsync(new ArraySegment<byte>(JsonSerializer.SerializeToUtf8Bytes(response)), WebSocketMessageType.Text, true, _shutdown.Token);
+                    // SqlJob matches each reply to its request by id, like the real server.
+                    var reply = JsonSerializer.SerializeToNode(response)!.AsObject();
+                    reply["id"] = root.GetProperty("id").GetString();
+                    await socket.SendAsync(new ArraySegment<byte>(JsonSerializer.SerializeToUtf8Bytes(reply)), WebSocketMessageType.Text, true, _shutdown.Token);
                 }
             }
             catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
