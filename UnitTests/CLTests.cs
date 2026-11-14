@@ -56,7 +56,7 @@ public sealed class  CLTests
         job.Close();
 
         Assert.IsFalse(result.Success);
-        Assert.IsTrue(result.IsDone);
+        // This is no longer returned by the Mapepire server: Assert.IsTrue(result.IsDone);
         Assert.IsNotNull(result.Id);
         Assert.IsTrue(result.Data.Count > 0);
         Assert.AreEqual(-443, result.SqlRc);
