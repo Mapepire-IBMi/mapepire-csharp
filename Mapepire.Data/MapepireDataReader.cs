@@ -87,7 +87,7 @@ public sealed class MapepireDataReader : DbDataReader
             throw new InvalidOperationException("The reader is closed.");
         }
 
-        if (_behavior.HasFlag(CommandBehavior.SingleRow) && _readAny && _current is not null)
+        if (_behavior.HasFlag(CommandBehavior.SingleRow) && _readAny)
         {
             _current = null;
             return false;
