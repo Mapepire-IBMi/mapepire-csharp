@@ -50,6 +50,17 @@ jobs:
         MAPEPIRE_PASSWORD: ${{ secrets.MAPEPIRE_PASSWORD }}
         MSBUILDDISABLENODEREUSE: 1
         MAPEPIRE_REJECT_UNAUTHORIZED: "false"
+        MAPEPIRE_TEST_PROGRESS_FILE: ${{ runner.temp }}/mapepire-live-test-progress.log
+    - name: Show live test progress
+      if: always()
+      shell: bash
+      run: |
+        progress_file="$RUNNER_TEMP/mapepire-live-test-progress.log"
+        if [ -f "$progress_file" ]; then
+          cat "$progress_file"
+        else
+          echo "No live test progress file was written."
+        fi
     - name: list .exe artifacts
       run: find staging -name \*.exe
     - name: list .dll artifacts
