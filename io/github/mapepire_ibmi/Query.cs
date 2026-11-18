@@ -57,6 +57,9 @@ namespace io.github.mapepire_ibmi
          */
         private bool IsTerseResults;
 
+        // Explicitly closed queries must not be registered again by an in-flight reply.
+        private bool IsClosed;
+
         /**
          * Construct a new Query instance.
          * 
@@ -80,7 +83,10 @@ namespace io.github.mapepire_ibmi
         {
             lock (GlobalQueryList)
             {
-                GlobalQueryList.Add(query);
+                if (!query.IsClosed && !GlobalQueryList.Any(entry => ReferenceEquals(entry, query)))
+                {
+                    GlobalQueryList.Add(query);
+                }
             }
         }
 
@@ -88,7 +94,7 @@ namespace io.github.mapepire_ibmi
         {
             lock (GlobalQueryList)
             {
-                GlobalQueryList.Remove(this);
+                GlobalQueryList.RemoveAll(entry => ReferenceEquals(entry, this));
             }
         }
 
@@ -150,26 +156,7 @@ namespace io.github.mapepire_ibmi
         {
             lock (GlobalQueryList)
             {
-                /* TODO  .. Java code below */
-                /* 
-                List<CompletableFuture<Void>> futures = globalQueryList.stream()
-                        .filter(query -> query.getState() == QueryState.RUN_DONE || query.getState() == QueryState.ERROR)
-                        .map(query -> CompletableFuture.runAsync(() -> {
-                            try {
-                                query.close();
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }))
-                        .collect(Collectors.toList());
-
-                return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                        .thenRun(() -> {
-                            globalQueryList = globalQueryList.stream()
-                                    .filter(q -> q.getState() != QueryState.RUN_DONE)
-                                    .collect(Collectors.toList());
-                        });
-                        */
+                GlobalQueryList.RemoveAll(query => query.State == QueryState.RUN_DONE || query.State == QueryState.ERROR);
             }
         }
 
@@ -207,11 +194,11 @@ namespace io.github.mapepire_ibmi
 
             }
 
-            string requestString;
+            object requestObject;
             if (this.IsCLCommand)
             {
                 ClExecuteRequest clExecuteRequest = new ClExecuteRequest(SqlJob.GetNewUniqueId("clcommand"), "cl", this.IsTerseResults, this.Sql);
-                requestString = JsonSerializer.Serialize(clExecuteRequest);
+                requestObject = clExecuteRequest;
             }
             else
             {
@@ -220,34 +207,20 @@ namespace io.github.mapepire_ibmi
                     SqlExecuteRequest request = new SqlExecuteRequest(SqlJob.GetNewUniqueId("query"),
                     this.IsPrepared ? "prepare_sql_execute" : "sql",
                     this.Sql, this.IsTerseResults, rowsToFetch);
-                    requestString = JsonSerializer.Serialize(request);
+                    requestObject = request;
                 }
                 else
                 {
                     SqlExecuteWithParametersRequest request = new SqlExecuteWithParametersRequest(SqlJob.GetNewUniqueId("query"),
                                this.IsPrepared ? "prepare_sql_execute" : "sql",
                                this.Sql, this.IsTerseResults, rowsToFetch, this.Parameters);
-                    requestString = JsonSerializer.Serialize(request);
+                    requestObject = request;
                 }
             }
 
 
             this.RowsToFetch = rowsToFetch;
-            if (Job == null) throw new Exception("Job is null");
-            string result = Job.Send(requestString);
-            QueryResult? queryResult ;
-            if (!this.IsTerseResults) { 
-                queryResult = JsonSerializer.Deserialize<QueryResult>(result);
-                if (queryResult == null) throw new Exception("Null query result");
-            } else {
-                TerseQueryResult terseQueryResult= JsonSerializer.Deserialize<TerseQueryResult>(result);
-                if (terseQueryResult == null) throw new Exception("Null terse query result");
-                queryResult = terseQueryResult.ConvertToQueryResult(); 
-            }
-            
-
-            this.State = queryResult.IsDone ? QueryState.RUN_DONE
-                                    : QueryState.RUN_MORE_DATA_AVAILABLE;
+            QueryResult queryResult = SendQueryRequest(requestObject, this.IsTerseResults);
 
             if (!queryResult.Success && !this.IsCLCommand)
             {
@@ -307,16 +280,7 @@ namespace io.github.mapepire_ibmi
             this.CorrelationId, "sqlmore", this.Sql, rowsToFetch);
             this.RowsToFetch = rowsToFetch;
 
-            string requestString = JsonSerializer.Serialize(fetchMoreRequest);
-
-            if (Job == null) throw new Exception("Job is null");
-            string result = Job.Send(requestString);
-
-            QueryResult? queryResult = JsonSerializer.Deserialize<QueryResult>(result);
-            if (queryResult == null) throw new Exception("Null query result");
-
-            this.State = queryResult.IsDone ? QueryState.RUN_DONE
-                                        : QueryState.RUN_MORE_DATA_AVAILABLE;
+            QueryResult queryResult = SendQueryRequest(fetchMoreRequest, false);
 
             if (!queryResult.Success)
             {
@@ -344,6 +308,11 @@ namespace io.github.mapepire_ibmi
          */
         public String Close()
         {
+            lock (GlobalQueryList)
+            {
+                this.IsClosed = true;
+                RemoveFromGlobalQueryList();
+            }
             if (CorrelationId != null && State != QueryState.RUN_DONE)
             {
                 State = QueryState.RUN_DONE;
@@ -366,6 +335,55 @@ namespace io.github.mapepire_ibmi
             else
             {
                 return null;
+            }
+        }
+
+        private QueryResult SendQueryRequest(object request, bool terseResults)
+        {
+            try
+            {
+                if (Job == null) throw new Exception("Job is null");
+                string result = Job.Send(JsonSerializer.Serialize(request));
+                QueryResult queryResult;
+                if (terseResults)
+                {
+                    TerseQueryResult terseResult = JsonSerializer.Deserialize<TerseQueryResult>(result)
+                        ?? throw new Exception("Null terse query result");
+                    queryResult = terseResult.ConvertToQueryResult();
+                }
+                else
+                {
+                    queryResult = JsonSerializer.Deserialize<QueryResult>(result)
+                        ?? throw new Exception("Null query result");
+                }
+
+                // CL replies contain all messages; newer servers omit is_done for them.
+                if (this.IsCLCommand)
+                {
+                    queryResult.IsDone = true;
+                }
+
+                this.State = !queryResult.Success ? QueryState.ERROR
+                    : queryResult.IsDone ? QueryState.RUN_DONE : QueryState.RUN_MORE_DATA_AVAILABLE;
+                if (this.State == QueryState.RUN_MORE_DATA_AVAILABLE)
+                {
+                    // A caller may retry a failed query; keep its new cursor discoverable.
+                    Query.AddQuery(this);
+                }
+
+                return queryResult;
+            }
+            catch
+            {
+                this.State = QueryState.ERROR;
+                throw;
+            }
+            finally
+            {
+                if (this.State == QueryState.RUN_DONE || this.State == QueryState.ERROR)
+                {
+                    RemoveFromGlobalQueryList();
+                }
             }
         }
 
