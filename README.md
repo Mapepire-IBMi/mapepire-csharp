@@ -79,6 +79,14 @@ Parameters can be named (`@id`) or positional (`?`). Named markers are rewritten
 | `Pooling` / `Max Pool Size` | `true` / `100` | Server connections (websocket plus server job) are pooled per connection string. |
 | `Idle Validation Seconds` | `30` | A pooled connection idle for longer than this is checked with a round trip before it is reused. |
 
+### Schema creation and deletion
+
+`EnsureCreated` creates the configured `Default Schema`. `EnsureDeleted` issues `DROP SCHEMA ... CASCADE` outside commitment control to remove that schema and its objects.
+
+On IBM i 7.3 and later, `CASCADE` avoids journal-receiver deletion inquiries that can leave an unattended call waiting for an operator. It also skips registered `QIBM_QJO_DLT_JRNRCV` exit programs. Review this behavior before using `EnsureDeleted` where those programs enforce journal-retention policy. See [IBM's migration notes](https://www.ibm.com/support/pages/node/6198525).
+
+`CASCADE` can also remove dependent triggers, masks, or permissions in other schemas, subject to the caller's authority. See [Db2 for i DROP semantics](https://www.ibm.com/docs/en/i/7.5.0?topic=statements-drop).
+
 ### Transactions
 
 * `Auto Commit=false`: real transactions. `BeginTransaction()` starts a unit of work that ends with COMMIT or ROLLBACK, and EF Core's `SaveChanges` is atomic. Outside an explicit transaction, each command is committed when it completes. **The tables involved must be journaled**; tables created in a schema made with `CREATE SCHEMA` are journaled automatically.
