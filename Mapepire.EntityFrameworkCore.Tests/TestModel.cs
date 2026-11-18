@@ -61,13 +61,18 @@ public sealed class BloggingContext(DbContextOptions<BloggingContext> options) :
 
     /// <summary>Creates a context for a connection string.</summary>
     /// <param name="connectionString">The Mapepire connection string.</param>
-    /// <param name="log">Receives each executed or failed SQL command, if set.</param>
+    /// <param name="log">Receives each starting, executed or failed SQL command, if set.</param>
     public static BloggingContext Create(string connectionString, Action<string>? log = null)
     {
         var builder = new DbContextOptionsBuilder<BloggingContext>().UseMapepire(connectionString);
         if (log is not null)
         {
-            builder.LogTo(log, [Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted, Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError]);
+            builder.LogTo(log,
+            [
+                Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuting,
+                Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandExecuted,
+                Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.CommandError,
+            ]);
         }
 
         return new(builder.Options);

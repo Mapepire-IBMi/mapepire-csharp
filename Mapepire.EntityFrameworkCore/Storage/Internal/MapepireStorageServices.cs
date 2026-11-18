@@ -87,7 +87,8 @@ public class MapepireDatabaseCreator(
         using var connection = new MapepireConnection(CreateAdminConnectionString());
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "DROP SCHEMA " + Dependencies.SqlGenerationHelper.DelimitIdentifier(schema);
+        // On IBM i 7.3+, CASCADE also suppresses journal-receiver inquiry messages that can wait for an operator.
+        command.CommandText = "DROP SCHEMA " + Dependencies.SqlGenerationHelper.DelimitIdentifier(schema) + " CASCADE";
 
         // Closed server jobs can take a moment to end and release the library; retry for a while.
         var deadline = DateTime.UtcNow.AddSeconds(30);

@@ -26,6 +26,7 @@ public sealed class LiveServerTests
     [ClassInitialize]
     public static void ClassInitialize(TestContext _)
     {
+        WriteProgress("initialize.begin");
         var config = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("unitTestSettings.json", optional: true)
@@ -36,6 +37,7 @@ public sealed class LiveServerTests
         if (string.IsNullOrWhiteSpace(host))
         {
             s_skipReason = "MAPEPIRE_HOST is not configured.";
+            WriteProgress("initialize.skipped: no server configured");
             return;
         }
 
@@ -53,26 +55,39 @@ public sealed class LiveServerTests
         try
         {
             using var context = CreateContext(autoCommit: false);
+            WriteProgress("initialize.EnsureDeleted.begin");
             context.Database.EnsureDeleted();
+            WriteProgress("initialize.EnsureDeleted.end");
+            WriteProgress("initialize.EnsureCreated.begin");
             context.Database.EnsureCreated();
+            WriteProgress("initialize.EnsureCreated.end");
         }
         catch (MapepireException ex) when (ex.InnerException is not null && ex.SqlState is null)
         {
             s_skipReason = "Mapepire server not reachable: " + ex.Message;
+            WriteProgress("initialize.skipped: server not reachable");
         }
+
+        WriteProgress("initialize.end");
     }
 
     /// <summary>Drops this run's schema and closes all pooled connections.</summary>
     [ClassCleanup]
     public static void ClassCleanup()
     {
+        WriteProgress("cleanup.begin");
         if (s_skipReason is null && s_baseConnectionString is not null)
         {
             using var context = CreateContext(autoCommit: false);
+            WriteProgress("cleanup.EnsureDeleted.begin");
             context.Database.EnsureDeleted();
+            WriteProgress("cleanup.EnsureDeleted.end");
         }
 
+        WriteProgress("cleanup.ClearAllPools.begin");
         MapepireConnection.ClearAllPools();
+        WriteProgress("cleanup.ClearAllPools.end");
+        WriteProgress("cleanup.end");
     }
 
     /// <summary>SaveChanges reads identity keys back through FINAL TABLE, and every mapped type survives a round trip.</summary>
@@ -246,27 +261,80 @@ public sealed class LiveServerTests
             Assert.Inconclusive(s_skipReason);
         }
 
-        using var connection = new MapepireConnection(s_baseConnectionString + ";Fetch Size=7");
-        connection.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            "WITH N(I) AS (SELECT 1 FROM SYSIBM.SYSDUMMY1 UNION ALL SELECT I + 1 FROM N WHERE I < @max) SELECT I FROM N";
-        command.Parameters.AddWithValue("@max", 50);
-        using var reader = command.ExecuteReader();
-        var count = 0;
-        while (reader.Read())
+        WriteProgress("paging.begin");
+        using (var connection = new MapepireConnection(s_baseConnectionString + ";Fetch Size=7"))
         {
-            count++;
-            Assert.AreEqual(count, reader.GetInt32(0));
+            WriteProgress("paging.Open.begin");
+            connection.Open();
+            WriteProgress("paging.Open.end");
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText =
+                    "WITH N(I) AS (SELECT 1 FROM SYSIBM.SYSDUMMY1 UNION ALL SELECT I + 1 FROM N WHERE I < @max) SELECT I FROM N";
+                command.Parameters.AddWithValue("@max", 50);
+                WriteProgress("paging.ExecuteReader.begin");
+                using (var reader = command.ExecuteReader())
+                {
+                    WriteProgress("paging.ExecuteReader.end");
+                    try
+                    {
+                        var count = 0;
+                        while (true)
+                        {
+                            WriteProgress($"paging.Read.begin: rows read={count}");
+                            if (!reader.Read())
+                            {
+                                WriteProgress("paging.Read.end: end of results");
+                                break;
+                            }
+
+                            count++;
+                            WriteProgress($"paging.Read.end: rows read={count}");
+                            Assert.AreEqual(count, reader.GetInt32(0));
+                        }
+
+                        Assert.AreEqual(50, count);
+                    }
+                    finally
+                    {
+                        WriteProgress("paging.reader.Dispose.begin");
+                    }
+                }
+
+                WriteProgress("paging.reader.Dispose.end");
+                WriteProgress("paging.command.Dispose.begin");
+            }
+
+            WriteProgress("paging.command.Dispose.end");
+            WriteProgress("paging.connection.Dispose.begin");
         }
 
-        Assert.AreEqual(50, count);
+        WriteProgress("paging.connection.Dispose.end");
+        WriteProgress("paging.end");
     }
 
     private static BloggingContext CreateContext(bool autoCommit)
     {
         var builder = new MapepireConnectionStringBuilder(s_baseConnectionString) { DefaultSchema = s_schema, AutoCommit = autoCommit };
-        return BloggingContext.Create(builder.ConnectionString, Console.WriteLine);
+        return BloggingContext.Create(builder.ConnectionString, message =>
+        {
+            Console.WriteLine(message);
+            WriteProgress(message);
+        });
+    }
+
+    /// <summary>
+    /// Persists live-test progress outside MSTest's captured output so it survives a test-host timeout.
+    /// Connection strings and parameter values must not be passed to this method.
+    /// </summary>
+    private static void WriteProgress(string message)
+    {
+        var path = Environment.GetEnvironmentVariable("MAPEPIRE_TEST_PROGRESS_FILE");
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            // Each append closes the file; a killed test host must not lose buffered progress.
+            File.AppendAllText(path, $"{DateTime.UtcNow:O} {message}{Environment.NewLine}");
+        }
     }
 
     /// <summary>Creates a context on this run's schema, or marks the test inconclusive when there is no server.</summary>

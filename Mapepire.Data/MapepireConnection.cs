@@ -265,9 +265,18 @@ public sealed class MapepireConnection : DbConnection
     /// </summary>
     internal void OnCommandCompleted()
     {
-        if (!_settings.AutoCommit && Transaction is null && _session is { IsBroken: false })
+        if (!_settings.AutoCommit && Transaction is null && _session is { IsBroken: false } session)
         {
-            ExecuteInternal("COMMIT");
+            try
+            {
+                ExecuteInternal("COMMIT");
+            }
+            catch
+            {
+                // The transaction outcome is uncertain even when the socket still works.
+                session.Dispose();
+                throw;
+            }
         }
     }
 
