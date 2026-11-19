@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace io.github.mapepire_ibmi.types { 
@@ -84,23 +85,50 @@ public class TerseQueryResult : ServerResponse {
         this.OutputParms = outputParms;
     }
 
-    public QueryResult ConvertToQueryResult() {
-        List<Dictionary<String,Object>>? queryResultData = null; 
-        if (Data != null) { 
-            queryResultData = []; 
-            foreach ( List<Object> row in Data) {
-               Dictionary<String,Object> newRow = []; 
-               for (int i = 0 ; i < row.Count; i++) {
-                newRow.Add(Metadata.Columns[i].Name, row[i]);
-               }
-               queryResultData.Add(newRow); 
+    /// <summary>Converts positional rows to dictionaries using their column names.</summary>
+    /// <returns>The query result with optional response fields preserved.</returns>
+    /// <exception cref="JsonException">A row contains values with missing column metadata or names.</exception>
+    public QueryResult ConvertToQueryResult()
+    {
+        List<Dictionary<string, object>>? resultData = null;
+        if (Data is not null)
+        {
+            resultData = [];
+            List<ColumnMetadata>? columns = Metadata?.Columns;
+            foreach (List<object> row in Data)
+            {
+                if (row.Count > (columns?.Count ?? 0))
+                {
+                    throw new JsonException("Terse query row has more values than columns in its metadata.");
+                }
+
+                Dictionary<string, object> resultRow = [];
+                for (int i = 0; i < row.Count; i++)
+                {
+                    string name = columns?[i]?.Name
+                        ?? throw new JsonException($"Terse query metadata is missing the name for column {i + 1}.");
+                    resultRow.Add(name, row[i]);
+                }
+
+                resultData.Add(resultRow);
             }
         }
-        return new QueryResult(Id,Success,Error,SqlRc,SqlState,Metadata,IsDone,HasResults,UpdateCount, queryResultData, 
-        ParameterCount,OutputParms);
-        
 
-
+        return new QueryResult
+        {
+            Id = Id,
+            Success = Success,
+            Error = Error,
+            SqlRc = SqlRc,
+            SqlState = SqlState,
+            Metadata = Metadata,
+            IsDone = IsDone,
+            HasResults = HasResults,
+            UpdateCount = UpdateCount,
+            Data = resultData,
+            ParameterCount = ParameterCount,
+            OutputParms = OutputParms
+        };
     }
 }
 

@@ -30,8 +30,9 @@ public sealed class ProcedureTest
         {
             query.Execute();
         }
-        catch (Exception e)
+        catch (Exception)
         {
+            // Schema creation is best effort because a previous run may have created it.
         }
         finally
         {
@@ -116,10 +117,8 @@ public sealed class ProcedureTest
         Assert.AreEqual("INTEGER", result.OutputParms.ElementAt(1).Type);
         Assert.AreEqual("INTEGER", result.OutputParms.ElementAt(2).Type);
         Assert.IsNull(result.OutputParms.ElementAt(0).Value);
-        Assert.IsNotNull(result.OutputParms.ElementAt(1).Value);
-        Assert.IsNotNull(result.OutputParms.ElementAt(2).Value);
-        Assert.AreEqual("0", result.OutputParms.ElementAt(1).Value.ToString());
-        Assert.AreEqual("10", result.OutputParms.ElementAt(2).Value.ToString());
+        Assert.AreEqual("0", result.OutputParms.ElementAt(1).Value?.ToString());
+        Assert.AreEqual("10", result.OutputParms.ElementAt(2).Value?.ToString());
     }
 
 
@@ -185,8 +184,8 @@ public sealed class ProcedureTest
         Assert.AreEqual("CHAR", result.OutputParms.ElementAt(1).Type);
         Assert.AreEqual("CHAR", result.OutputParms.ElementAt(2).Type);
         Assert.IsNull(result.OutputParms.ElementAt(0).Value);
-        Assert.AreEqual("", result.OutputParms.ElementAt(1).Value.ToString());
-        Assert.AreEqual("ab", result.OutputParms.ElementAt(2).Value.ToString());
+        Assert.AreEqual("", result.OutputParms.ElementAt(1).Value?.ToString());
+        Assert.AreEqual("ab", result.OutputParms.ElementAt(2).Value?.ToString());
         Assert.AreEqual(5, result.OutputParms.ElementAt(0).Precision);
         Assert.AreEqual(6, result.OutputParms.ElementAt(1).Precision);
         Assert.AreEqual(7, result.OutputParms.ElementAt(2).Precision);
@@ -261,10 +260,8 @@ public sealed class ProcedureTest
         Assert.AreEqual("VARCHAR", result.OutputParms.ElementAt(1).Type);
         Assert.AreEqual("VARCHAR", result.OutputParms.ElementAt(2).Type);
         Assert.IsNull(result.OutputParms.ElementAt(0).Value);
-        Assert.IsNotNull(result.OutputParms.ElementAt(1).Value);
-        Assert.IsNotNull(result.OutputParms.ElementAt(2).Value);
-        Assert.AreEqual("", result.OutputParms.ElementAt(1).Value.ToString());
-        Assert.AreEqual("ab", result.OutputParms.ElementAt(2).Value.ToString());
+        Assert.AreEqual("", result.OutputParms.ElementAt(1).Value?.ToString());
+        Assert.AreEqual("ab", result.OutputParms.ElementAt(2).Value?.ToString());
         Assert.AreEqual(5, result.OutputParms.ElementAt(0).Precision);
         Assert.AreEqual(6, result.OutputParms.ElementAt(1).Precision);
         Assert.AreEqual(7, result.OutputParms.ElementAt(2).Precision);

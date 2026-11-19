@@ -99,6 +99,7 @@ public sealed class  TraceTest
         
         Assert.IsTrue(result.Success);
         Assert.IsNotNull(result.Id);
+        Assert.IsNotNull(result.TraceData);
         bool hasExceptionInTrace = result.TraceData
                     .IndexOf("com.ibm.as400.access.AS400JDBCSQLSyntaxErrorException: [SQL0104] Token ." + counter) >= 0;
         if (traceExists) {

@@ -14,7 +14,6 @@ namespace UnitTests;
 public sealed class  QueryTests
 
 {
-    private IConfigurationRoot? config;
 
     SqlJob? sqlJob ; 
     [TestInitialize]
