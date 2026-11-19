@@ -124,37 +124,36 @@ namespace io.github.mapepire_ibmi
             return true;
         }
 
-public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateValidationCallback(X509Certificate2Collection trustedRoots)
-{    
-    return (sender, certificate, chain, policyErrors) =>
-    {
-        // Missing cert or the destination hostname wasn't valid for the cert.
-        if ((policyErrors & ~SslPolicyErrors.RemoteCertificateChainErrors) != 0)
+        /// <summary>Builds a certificate validator using the configured custom trust roots.</summary>
+        /// <param name="trustedRoots">The custom roots. An empty or null collection uses the peer certificate as the root.</param>
+        /// <returns>A validator that rejects missing certificate inputs and hostname mismatches.</returns>
+        public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateValidationCallback(X509Certificate2Collection? trustedRoots)
         {
-            return false;
+            return (sender, certificate, chain, policyErrors) =>
+            {
+                if (certificate is not X509Certificate2 peerCertificate || chain is null
+                    || (policyErrors & ~SslPolicyErrors.RemoteCertificateChainErrors) != 0)
+                {
+                    return false;
+                }
+
+                // Preserve the no-CA behavior when no custom roots were provided.
+                X509Certificate2Collection roots = trustedRoots is { Count: > 0 }
+                    ? trustedRoots
+                    : new X509Certificate2Collection(peerCertificate);
+
+                for (int i = 1; i < chain.ChainElements.Count; i++)
+                {
+                    chain.ChainPolicy.ExtraStore.Add(chain.ChainElements[i].Certificate);
+                }
+
+                chain.ChainPolicy.CustomTrustStore.Clear();
+                chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                chain.ChainPolicy.CustomTrustStore.AddRange(roots);
+                return chain.Build(peerCertificate);
+            };
         }
 
-        X509Certificate2Collection roots;
-        if (trustedRoots != null && trustedRoots.Count > 0) {
-            roots = trustedRoots;
-        }
-        // If trustedRoots is null or empty, add the certificate in the validation callback to the trust roots.
-        else {
-            roots = new X509Certificate2Collection((X509Certificate2)certificate);
-        }
-
-        for (int i = 1; i < chain.ChainElements.Count; i++)
-        {
-            chain.ChainPolicy.ExtraStore.Add(chain.ChainElements[i].Certificate);
-        }
-
-       
-        chain.ChainPolicy.CustomTrustStore.Clear();
-        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-        chain.ChainPolicy.CustomTrustStore.AddRange(roots);
-        return chain.Build((X509Certificate2)certificate);
-    };
-}
         /**
          * Get a WebSocketClient instance which can be used to connect to the specified
          * DB2 server.

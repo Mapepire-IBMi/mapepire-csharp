@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Authentication;
 
 namespace io.github.mapepire_ibmi.types {
 
@@ -23,11 +22,12 @@ public class ConnectOptionsRequest
     [JsonPropertyName("application")]
     public  String Application { get; set; }
 
+    /// <summary>The JDBC properties, or null to use the server defaults.</summary>
     [JsonPropertyName("props")]
-    public  String JdbcProperties { get; set; }
+    public String? JdbcProperties { get; set; }
 
 public ConnectOptionsRequest
-(String id, String type, String technique, String application, String props) {
+(String id, String type, String technique, String application, String? props) {
     this.Id = id; 
     this.Type = type;
     this.Technique = technique;
