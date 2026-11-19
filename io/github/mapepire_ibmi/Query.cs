@@ -288,7 +288,7 @@ namespace io.github.mapepire_ibmi
 
         /// <summary>Unregisters the query and sends a close request for an unfinished query with a cursor ID.</summary>
         /// <returns>The close response, or <see langword="null"/> when no close request is sent.</returns>
-        public String Close()
+        public String? Close()
         {
             lock (GlobalQueryList)
             {

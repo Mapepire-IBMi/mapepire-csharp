@@ -122,7 +122,7 @@ public sealed class QueryCleanupIntegrationTests
         Assert.IsFalse(result.IsDone);
         Assert.AreSame(query, Query.ById(result.Id));
 
-        string response = query.Close();
+        string? response = query.Close();
         Assert.IsNotNull(response);
         using JsonDocument close = JsonDocument.Parse(response);
         Assert.IsTrue(close.RootElement.GetProperty("success").GetBoolean());

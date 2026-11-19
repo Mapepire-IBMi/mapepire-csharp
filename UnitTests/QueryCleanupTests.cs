@@ -349,7 +349,7 @@ public sealed class QueryCleanupTests
         SqlJob job = NewJob(out ScriptedWebSocket socket);
         Query query = NewQuery(job);
         QueryResult first = await ReplyAsync(socket, query.Execute, done: false);
-        Task<string> closing = Task.Run(query.Close);
+        Task<string?> closing = Task.Run(query.Close);
         await socket.WaitForSendCountAsync(2);
         JsonElement request = ReadRequest(socket);
         Assert.AreEqual("sqlclose", request.GetProperty("type").GetString());
