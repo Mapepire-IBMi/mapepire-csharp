@@ -15,7 +15,6 @@ namespace UnitTests;
 public sealed class  ConnectionTests
 
 {
-    private IConfigurationRoot? config;
 
     [TestInitialize]
     public void TestInitialize()

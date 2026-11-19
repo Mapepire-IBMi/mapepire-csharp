@@ -58,6 +58,7 @@ public sealed class  CLTests
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.IsDone);
         Assert.IsNotNull(result.Id);
+        Assert.IsNotNull(result.Data);
         Assert.IsTrue(result.Data.Count > 0);
         Assert.AreEqual(-443, result.SqlRc);
         Assert.AreEqual("38501", result.SqlState);

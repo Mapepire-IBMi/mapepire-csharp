@@ -110,8 +110,8 @@ public sealed class  SQLTest
         Assert.AreEqual(5, result.Data.Count);
         Assert.IsNotNull(result.Metadata); 
         Assert.IsNotNull(result.Metadata.Columns); 
-        Assert.IsNotNull(result.Metadata.Columns[0].Name); 
-        String? firstColumnName=result.Metadata.Columns[0].Name;
+        string? firstColumnName = result.Metadata.Columns[0].Name;
+        Assert.IsNotNull(firstColumnName);
         Assert.IsNotNull(row[firstColumnName]);
     }
 
@@ -327,8 +327,8 @@ public sealed class  SQLTest
         
             Assert.IsNotNull(result.Metadata); 
         Assert.IsNotNull(result.Metadata.Columns); 
-        Assert.IsNotNull(result.Metadata.Columns[0].Name); 
-        String? firstColumnName=result.Metadata.Columns[0].Name;
+        string? firstColumnName = result.Metadata.Columns[0].Name;
+        Assert.IsNotNull(firstColumnName);
         Assert.IsNotNull(row[firstColumnName]);
         Assert.AreEqual("TABLE_NAME", row[firstColumnName].ToString());
     
