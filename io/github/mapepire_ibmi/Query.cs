@@ -1,10 +1,10 @@
-using System.Data.SqlTypes;
 using System.Text.Json;
 using io.github.mapepire_ibmi.types;
 
 
 namespace io.github.mapepire_ibmi
 {
+    /// <summary>Executes an SQL statement or CL command on a Mapepire job.</summary>
     public class Query
     {
         /**
@@ -57,6 +57,9 @@ namespace io.github.mapepire_ibmi
          */
         private bool IsTerseResults;
 
+        // Explicitly closed queries must not be registered again by an in-flight reply.
+        private bool _isClosed;
+
         /**
          * Construct a new Query instance.
          * 
@@ -76,19 +79,25 @@ namespace io.github.mapepire_ibmi
             Query.AddQuery(this);
         }
 
+        /// <summary>Registers the query by instance unless it was explicitly closed.</summary>
+        /// <param name="query">The query to register.</param>
         public static void AddQuery(Query query)
         {
             lock (GlobalQueryList)
             {
-                GlobalQueryList.Add(query);
+                if (!query._isClosed && !GlobalQueryList.Any(entry => ReferenceEquals(entry, query)))
+                {
+                    GlobalQueryList.Add(query);
+                }
             }
         }
 
+        /// <summary>Removes this instance from the process-wide registry.</summary>
         internal void RemoveFromGlobalQueryList()
         {
             lock (GlobalQueryList)
             {
-                GlobalQueryList.Remove(this);
+                GlobalQueryList.RemoveAll(entry => ReferenceEquals(entry, this));
             }
         }
 
@@ -142,34 +151,12 @@ namespace io.github.mapepire_ibmi
             }
         }
 
-        /**
-         * Clean up queries that are done or are in error state from the global query
-         * list.
-         */
+        /// <summary>Removes completed and failed queries from the process-wide registry.</summary>
         public void Cleanup()
         {
             lock (GlobalQueryList)
             {
-                /* TODO  .. Java code below */
-                /* 
-                List<CompletableFuture<Void>> futures = globalQueryList.stream()
-                        .filter(query -> query.getState() == QueryState.RUN_DONE || query.getState() == QueryState.ERROR)
-                        .map(query -> CompletableFuture.runAsync(() -> {
-                            try {
-                                query.close();
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }))
-                        .collect(Collectors.toList());
-
-                return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                        .thenRun(() -> {
-                            globalQueryList = globalQueryList.stream()
-                                    .filter(q -> q.getState() != QueryState.RUN_DONE)
-                                    .collect(Collectors.toList());
-                        });
-                        */
+                GlobalQueryList.RemoveAll(query => query.State == QueryState.RUN_DONE || query.State == QueryState.ERROR);
             }
         }
 
@@ -184,13 +171,10 @@ namespace io.github.mapepire_ibmi
             return this.Execute(100);
         }
 
-        /**
-         * Execute an SQL command and returns the result.
-         * 
-         * @param <T>         The type of data to be returned.
-         * @param rowsToFetch The number of rows to fetch.
-         * @return A CompletableFuture that resolves to the query result.
-         */
+        /// <summary>Executes this query and returns its first result. CL commands return their messages in one reply.</summary>
+        /// <param name="rowsToFetch">The maximum number of SQL rows to request in the first page.</param>
+        /// <returns>The first SQL result or the CL command result, including a failed CL result.</returns>
+        /// <exception cref="SqlException">The server rejected the SQL statement.</exception>
         public QueryResult Execute(int rowsToFetch)
         {
             if (rowsToFetch <= 0)
@@ -198,78 +182,57 @@ namespace io.github.mapepire_ibmi
                 throw new Exception("Rows to fetch must be greater than 0");
             }
 
-            switch (this.State)
+            switch (State)
             {
                 case QueryState.RUN_MORE_DATA_AVAILABLE:
                     throw new Exception("Statement has already been run");
                 case QueryState.RUN_DONE:
                     throw new Exception("Statement has already been fully run");
-
             }
 
-            string requestString;
-            if (this.IsCLCommand)
+            object requestObject;
+            if (IsCLCommand)
             {
-                ClExecuteRequest clExecuteRequest = new ClExecuteRequest(SqlJob.GetNewUniqueId("clcommand"), "cl", this.IsTerseResults, this.Sql);
-                requestString = JsonSerializer.Serialize(clExecuteRequest);
+                ClExecuteRequest clExecuteRequest = new ClExecuteRequest(SqlJob.GetNewUniqueId("clcommand"), "cl", IsTerseResults, Sql);
+                requestObject = clExecuteRequest;
             }
             else
             {
-                if (Parameters == null)
+                if (Parameters is null)
                 {
                     SqlExecuteRequest request = new SqlExecuteRequest(SqlJob.GetNewUniqueId("query"),
-                    this.IsPrepared ? "prepare_sql_execute" : "sql",
-                    this.Sql, this.IsTerseResults, rowsToFetch);
-                    requestString = JsonSerializer.Serialize(request);
+                        IsPrepared ? "prepare_sql_execute" : "sql",
+                        Sql, IsTerseResults, rowsToFetch);
+                    requestObject = request;
                 }
                 else
                 {
                     SqlExecuteWithParametersRequest request = new SqlExecuteWithParametersRequest(SqlJob.GetNewUniqueId("query"),
-                               this.IsPrepared ? "prepare_sql_execute" : "sql",
-                               this.Sql, this.IsTerseResults, rowsToFetch, this.Parameters);
-                    requestString = JsonSerializer.Serialize(request);
+                        IsPrepared ? "prepare_sql_execute" : "sql",
+                        Sql, IsTerseResults, rowsToFetch, Parameters);
+                    requestObject = request;
                 }
             }
 
+            RowsToFetch = rowsToFetch;
+            QueryResult queryResult = SendQueryRequest(requestObject, IsTerseResults);
 
-            this.RowsToFetch = rowsToFetch;
-            if (Job == null) throw new Exception("Job is null");
-            string result = Job.Send(requestString);
-            QueryResult? queryResult ;
-            if (!this.IsTerseResults) { 
-                queryResult = JsonSerializer.Deserialize<QueryResult>(result);
-                if (queryResult == null) throw new Exception("Null query result");
-            } else {
-                TerseQueryResult terseQueryResult= JsonSerializer.Deserialize<TerseQueryResult>(result);
-                if (terseQueryResult == null) throw new Exception("Null terse query result");
-                queryResult = terseQueryResult.ConvertToQueryResult(); 
-            }
-            
-
-            this.State = queryResult.IsDone ? QueryState.RUN_DONE
-                                    : QueryState.RUN_MORE_DATA_AVAILABLE;
-
-            if (!queryResult.Success && !this.IsCLCommand)
+            if (!queryResult.Success && !IsCLCommand)
             {
-                this.State = QueryState.ERROR;
-
-                List<String> errorList = [];
                 String? error = queryResult.Error;
-                if (error == null)
+                if (error is null)
                 {
                     error = "Failed to run query";
                 }
+
                 String? sqlState = queryResult.SqlState;
                 int sqlCode = queryResult.SqlRc;
-
 
                 throw new SqlException(error, sqlCode, sqlState);
             }
 
-            this.CorrelationId = queryResult.Id;
+            CorrelationId = queryResult.Id;
             return queryResult;
-
-
         }
 
         /**
@@ -282,12 +245,10 @@ namespace io.github.mapepire_ibmi
             return this.FetchMore(this.RowsToFetch);
         }
 
-        /**
-         * Fetch more rows from the currently running query.
-         * 
-         * @param rowsToFetch The number of additional rows to fetch.
-         * @return A query result.
-         */
+        /// <summary>Fetches the next page using the original SQL cursor ID.</summary>
+        /// <param name="rowsToFetch">The maximum number of rows to request.</param>
+        /// <returns>The next result page.</returns>
+        /// <exception cref="SqlException">The server returned an SQL error while fetching rows.</exception>
         public QueryResult FetchMore(int rowsToFetch)
         {
             if (rowsToFetch <= 0)
@@ -295,7 +256,7 @@ namespace io.github.mapepire_ibmi
                 throw new Exception("Rows to fetch must be greater than 0");
             }
 
-            switch (this.State)
+            switch (State)
             {
                 case QueryState.NOT_YET_RUN:
                     throw new Exception("Statement has not yet been run");
@@ -304,26 +265,15 @@ namespace io.github.mapepire_ibmi
             }
 
             FetchMoreRequest fetchMoreRequest = new(SqlJob.GetNewUniqueId("fetchMore"),
-            this.CorrelationId, "sqlmore", this.Sql, rowsToFetch);
-            this.RowsToFetch = rowsToFetch;
+                CorrelationId, "sqlmore", Sql, rowsToFetch);
+            RowsToFetch = rowsToFetch;
 
-            string requestString = JsonSerializer.Serialize(fetchMoreRequest);
-
-            if (Job == null) throw new Exception("Job is null");
-            string result = Job.Send(requestString);
-
-            QueryResult? queryResult = JsonSerializer.Deserialize<QueryResult>(result);
-            if (queryResult == null) throw new Exception("Null query result");
-
-            this.State = queryResult.IsDone ? QueryState.RUN_DONE
-                                        : QueryState.RUN_MORE_DATA_AVAILABLE;
+            QueryResult queryResult = SendQueryRequest(fetchMoreRequest, false);
 
             if (!queryResult.Success)
             {
-                this.State = QueryState.ERROR;
-
                 String? error = queryResult.Error;
-                if (error != null)
+                if (error is not null)
                 {
                     throw new SqlException(error, queryResult.SqlRc, queryResult.SqlState);
                 }
@@ -334,31 +284,34 @@ namespace io.github.mapepire_ibmi
             }
 
             return queryResult;
-
         }
 
-        /**
-         * Close the query.
-         * 
-         * @return The results of closing the query. 
-         */
+        /// <summary>Unregisters the query and sends a close request for an unfinished query with a cursor ID.</summary>
+        /// <returns>The close response, or <see langword="null"/> when no close request is sent.</returns>
         public String Close()
         {
-            if (CorrelationId != null && State != QueryState.RUN_DONE)
+            lock (GlobalQueryList)
+            {
+                _isClosed = true;
+                RemoveFromGlobalQueryList();
+            }
+            if (CorrelationId is not null && State != QueryState.RUN_DONE)
             {
                 State = QueryState.RUN_DONE;
                 CloseRequest closeRequest = new(SqlJob.GetNewUniqueId("sqlclose"),
-        this.CorrelationId, "sqlclose");
+                    CorrelationId, "sqlclose");
 
                 string requestString = JsonSerializer.Serialize(closeRequest);
 
-                if (Job == null) throw new Exception("Job is null");
+                if (Job is null)
+                {
+                    throw new Exception("Job is null");
+                }
                 string result = Job.Send(requestString);
                 return result;
 
-
             }
-            else if (CorrelationId == null)
+            else if (CorrelationId is null)
             {
                 State = QueryState.RUN_DONE;
                 return null;
@@ -366,6 +319,70 @@ namespace io.github.mapepire_ibmi
             else
             {
                 return null;
+            }
+        }
+
+        /// <summary>Sends a query request and updates registry membership based on the outcome.</summary>
+        /// <param name="request">The typed SQL, fetch, or CL request.</param>
+        /// <param name="terseResults">Whether the reply contains positional rows.</param>
+        /// <returns>The decoded query result.</returns>
+        /// <exception cref="JsonException">The request or response could not be serialized or deserialized.</exception>
+        private QueryResult SendQueryRequest(object request, bool terseResults)
+        {
+            try
+            {
+                if (Job is null)
+                {
+                    throw new Exception("Job is null");
+                }
+                string result = Job.Send(JsonSerializer.Serialize(request));
+                QueryResult queryResult;
+                if (terseResults)
+                {
+                    TerseQueryResult terseResult = JsonSerializer.Deserialize<TerseQueryResult>(result)
+                        ?? throw new Exception("Null terse query result");
+                    queryResult = terseResult.ConvertToQueryResult();
+                }
+                else
+                {
+                    queryResult = JsonSerializer.Deserialize<QueryResult>(result)
+                        ?? throw new Exception("Null query result");
+                }
+
+                // CL replies contain all messages, including errors, and never allocate an SQL cursor.
+                if (IsCLCommand)
+                {
+                    queryResult.IsDone = true;
+                    State = QueryState.RUN_DONE;
+                }
+                else if (!queryResult.Success)
+                {
+                    State = QueryState.ERROR;
+                }
+                else if (queryResult.IsDone)
+                {
+                    State = QueryState.RUN_DONE;
+                }
+                else
+                {
+                    State = QueryState.RUN_MORE_DATA_AVAILABLE;
+                    // A caller may retry a failed query. Keep its new cursor discoverable.
+                    AddQuery(this);
+                }
+
+                return queryResult;
+            }
+            catch
+            {
+                State = QueryState.ERROR;
+                throw;
+            }
+            finally
+            {
+                if (State == QueryState.RUN_DONE || State == QueryState.ERROR)
+                {
+                    RemoveFromGlobalQueryList();
+                }
             }
         }
 
