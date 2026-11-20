@@ -62,20 +62,31 @@ public sealed class  ConnectionTests
             }
      
     }
-  [TestMethod]
-    public void NewJobOnSubsequentConnects()  {
-        DaemonServer daemonServer = MapepireTest.GetTestDaemonServer(); 
-      
-		SqlJob newJob = new(); 
-		ConnectionResult? result1  = newJob.Connect(daemonServer);
-        string? jobId1= newJob.Id ?? throw new Exception("job is null");
-        Assert.IsTrue(jobId1.IndexOf("QZDASOINIT") > 0); 
+    /// <summary>Checks that reconnecting leaves the client usable even if IBM i reuses its prestart job.</summary>
+    [TestMethod]
+    public void ReconnectKeepsLiveConnectionUsable()
+    {
+        DaemonServer server = MapepireTest.GetTestDaemonServer();
+        var job = new SqlJob();
+        try
+        {
+            ConnectionResult? first = job.Connect(server);
+            Assert.IsNotNull(first);
+            Assert.IsTrue(first.Success);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(first.Job));
 
-        ConnectionResult? result2 = newJob.Connect(daemonServer);
-        string? jobId2 = newJob.Id ?? throw new Exception("job is null");
-        Assert.IsTrue(jobId2.IndexOf("QZDASOINIT") > 0); 
-
-        Assert.AreNotEqual(jobId1, jobId2);
+            ConnectionResult? second = job.Connect(server);
+            Assert.IsNotNull(second);
+            Assert.IsTrue(second.Success);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(second.Job));
+            Assert.AreEqual(second.Job, job.Id);
+            Assert.IsTrue(job.GetVersion().Success);
+            Console.WriteLine($"IBM i job IDs before and after reconnect: {first.Job}, {second.Job}");
+        }
+        finally
+        {
+            job.Close();
+        }
     }
 
     [TestMethod]

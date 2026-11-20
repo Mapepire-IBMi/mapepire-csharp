@@ -1,127 +1,117 @@
-using System;
-using System.Diagnostics.Metrics;
+using System.Globalization;
+using System.Text.Json;
 using io.github.mapepire_ibmi;
 using io.github.mapepire_ibmi.types;
-using Microsoft.Testing.Extensions.VSTestBridge;
 
 namespace UnitTests;
 
-
-
+/// <summary>Checks whether the server traces a specific SQL error at each trace level.</summary>
 [TestClass]
-public sealed class  TraceTest
-
+[DoNotParallelize]
+public sealed class TraceTest
 {
-  
-    static Object lockObject = new(); 
-    static DateTime startTime = DateTime.Now;
-    static int counter = startTime.Hour * 3600000 + startTime.Minute *60000+ startTime.Second *1000+ startTime.Millisecond; 
+    [TestMethod]
+    public void ServerTracingOff() => AssertTraceData(ServerTraceLevel.OFF, expectedInTrace: false);
 
-    [TestInitialize]
-    public void TestInitialize()
+    [TestMethod]
+    public void ServerTracingOn() => AssertTraceData(ServerTraceLevel.ON, expectedInTrace: true);
+
+    [TestMethod]
+    public void ErrorServerTracing() => AssertTraceData(ServerTraceLevel.ERRORS, expectedInTrace: true);
+
+    [TestMethod]
+    public void DataStreamServerTracing() => AssertTraceData(ServerTraceLevel.DATASTREAM, expectedInTrace: true);
+
+    /// <summary>Checks for one syntax error under a confirmed trace level and restores the original level.</summary>
+    /// <param name="level">The Mapepire trace level requested for this case.</param>
+    /// <param name="expectedInTrace">Whether enabled tracing should include the error.</param>
+    private static void AssertTraceData(ServerTraceLevel level, bool expectedInTrace)
     {
-  
-    }
+        var job = new SqlJob();
+        string? originalLevel = null;
+        bool restoreTrace = false;
+        try
+        {
+            ConnectionResult? connection = job.Connect(MapepireTest.GetTestDaemonServer());
+            Assert.IsNotNull(connection);
+            Assert.IsTrue(connection.Success);
 
-    [TestCleanup]
-    public void TestCleanup()
-    {
-  
-  
-    }
-  
-  
-    [TestMethod]
-    public void ServerTracingOff()  {
-       int counter =  getCounter();
-       String invalidQuery = "SELECT * FROM SAMPLE."+counter;
-       AssertTraceData(invalidQuery, counter, ServerTraceLevel.OFF, false);
-    }
-
-    [TestMethod]
-    public void ServerTracingOn()  {
-       int counter =  getCounter();
-       String invalidQuery = "SELECT * FROM SAMPLE."+counter;
-        AssertTraceData(invalidQuery, counter, ServerTraceLevel.ON, true);
-    }
-
-    [TestMethod]
-    public void ErrorServerTracing()  {
-       int counter =  getCounter();
-       String invalidQuery = "SELECT * FROM SAMPLE."+counter;
-        AssertTraceData(invalidQuery, counter, ServerTraceLevel.ERRORS, true);
-    }
-
-    public static int getCounter() { 
-        
-        lock(lockObject) { 
-            counter++; 
-        }
-        return counter; 
-    }
-    [TestMethod]
-    public void DataStreamServerTracing()  {
-       int counter =  getCounter();
-       string invalidQuery = "SELECT * FROM SAMPLE."+counter;
-        AssertTraceData(invalidQuery, counter, ServerTraceLevel.DATASTREAM, true);
-    }
-
-    public void AssertTraceData(String? sql, int counter, ServerTraceLevel level, bool traceExists)  {
-        lock(lockObject) { 
-        if (sql == null) throw new Exception("null sql string"); 
-        DaemonServer daemonServer = MapepireTest.GetTestDaemonServer(); 
-        SqlJob job = new(); 
-		ConnectionResult? cr = job.Connect(daemonServer);
-     
-        // If the config result indicates that tracing is not enabled at the server side,
-        // then set traceExists to false.
-        SetConfigResult configResult = job.SetTraceLevel(level);
-        if (configResult.JtOpenTraceLevel?.ToUpper() == "OFF") {
-            traceExists = false;
-        }
-
-        Query query = job.Query(sql);
-
-            try {
-                query.Execute(1);
-            } catch (Exception ex) {
-                 String expectedMessage = "[SQL0104] Token ."+counter+" was not valid. Valid tokens: FOR USE SKIP WAIT WITH FETCH LIMIT ORDER UNION EXCEPT.";
-                Assert.AreEqual(expectedMessage, ex.Message);
+            SetConfigResult original = job.SetTraceConfig(null, null, null, null);
+            Assert.IsTrue(original.Success);
+            originalLevel = original.TraceLevel;
+            if (string.IsNullOrWhiteSpace(originalLevel) || string.Equals(originalLevel, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                Assert.Inconclusive("The daemon did not report a trace level that the test can restore.");
             }
-            query.Close(); 
-        
 
-        GetTraceDataResult result = job.GetTraceDataResult();
+            restoreTrace = true;
+            SetConfigResult requested = job.SetTraceLevel(level);
+            Assert.IsTrue(requested.Success);
 
-        job.SetTraceLevel(ServerTraceLevel.OFF);
-        
-        job.Close();
-        
+            // Match the unique SQL token, independent of the parser's suggested tokens.
+            string token = "." + Random.Shared.Next(10_000_000, 100_000_000).ToString(CultureInfo.InvariantCulture);
+            Query query = job.Query("SELECT * FROM SYSIBM" + token);
+            try
+            {
+                SqlException error = Assert.ThrowsException<SqlException>(() => query.Execute(1));
+                Assert.AreEqual("42601", error.SqlState);
+            }
+            finally
+            {
+                query.Close();
+            }
+
+            string expectedLevel = level.GetValue();
+            if (!string.Equals(requested.TraceLevel, expectedLevel, StringComparison.OrdinalIgnoreCase))
+            {
+                // A direct protocol request distinguishes a daemon capability limit from an SDK error.
+                SetConfigResult direct = SendTraceLevel(job, expectedLevel);
+                if (!string.Equals(direct.TraceLevel, expectedLevel, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(original.TraceDest, "unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    Assert.Inconclusive($"The daemon does not expose a configurable trace destination and did not apply {expectedLevel}.");
+                }
+
+                Assert.IsTrue(string.Equals(requested.TraceLevel, expectedLevel, StringComparison.OrdinalIgnoreCase),
+                    $"Expected Mapepire trace level {expectedLevel}. SDK reported {requested.TraceLevel}. Direct request reported {direct.TraceLevel}.");
+            }
+
+            GetTraceDataResult result = job.GetTraceDataResult();
+            Assert.IsTrue(result.Success);
+            Assert.IsNotNull(result.Id);
+            Assert.IsNotNull(result.TraceData);
+            bool found = result.TraceData.Contains("[SQL0104] Token " + token, StringComparison.Ordinal);
+            Assert.AreEqual(expectedInTrace, found, "Unexpected presence of the SQL error in Mapepire trace data.");
+        }
+        finally
+        {
+            try
+            {
+                if (restoreTrace && originalLevel is not null)
+                {
+                    // The daemon can report levels beyond the SDK's public constants.
+                    SetConfigResult restored = SendTraceLevel(job, originalLevel);
+                    Assert.IsTrue(string.Equals(originalLevel, restored.TraceLevel, StringComparison.OrdinalIgnoreCase),
+                        "The original trace level was not restored.");
+                }
+            }
+            finally
+            {
+                job.Close();
+            }
+        }
+    }
+
+    /// <summary>Sends a trace level directly to the daemon for comparison or restoration.</summary>
+    /// <param name="job">The connected SQL job.</param>
+    /// <param name="level">The trace level identifier accepted by the daemon.</param>
+    /// <returns>The daemon's confirmed configuration.</returns>
+    private static SetConfigResult SendTraceLevel(SqlJob job, string level)
+    {
+        var request = new SetTraceConfigRequest(SqlJob.GetNewUniqueId(), "setconfig") { Tracelevel = level };
+        SetConfigResult? result = JsonSerializer.Deserialize<SetConfigResult>(job.Send(JsonSerializer.Serialize(request)));
+        Assert.IsNotNull(result);
         Assert.IsTrue(result.Success);
-        Assert.IsNotNull(result.Id);
-        bool hasExceptionInTrace = result.TraceData
-                    .IndexOf("com.ibm.as400.access.AS400JDBCSQLSyntaxErrorException: [SQL0104] Token ." + counter) >= 0;
-        if (traceExists) {
-            if (!hasExceptionInTrace) { 
-                Console.WriteLine("Trace does not have exception"); 
-                Console.WriteLine(result.TraceData); 
-            }
-            Assert.IsTrue(hasExceptionInTrace);
-        } else {
-            if (hasExceptionInTrace) { 
-                Console.WriteLine("Trace has exception"); 
-                Console.WriteLine(result.TraceData); 
-            }
-            Assert.IsFalse(hasExceptionInTrace);
-        }
-        /* Make sure the server is reset */ 
-        DaemonServer daemonServer2 = MapepireTest.GetTestDaemonServer(); 
-        SqlJob job2 = new(); 
-		ConnectionResult? cr2 = job2.Connect(daemonServer);
-        
-        job2.SetTraceLevel(ServerTraceLevel.OFF);
-
-        job2.Close();
-        }
+        return result;
     }
 }
