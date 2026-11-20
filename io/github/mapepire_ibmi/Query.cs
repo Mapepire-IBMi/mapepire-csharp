@@ -60,6 +60,9 @@ namespace io.github.mapepire_ibmi
         // Explicitly closed queries must not be registered again by an in-flight reply.
         private bool _isClosed;
 
+        // Reserve the single server close independently of local registry removal.
+        private bool _sqlCloseRequested;
+
         /**
          * Construct a new Query instance.
          * 
@@ -286,38 +289,38 @@ namespace io.github.mapepire_ibmi
             return queryResult;
         }
 
-        /// <summary>Unregisters the query and sends a close request for an unfinished query with a cursor ID.</summary>
-        /// <returns>The close response, or <see langword="null"/> when no close request is sent.</returns>
-        public String Close()
+        /// <summary>Unregisters the query and releases its server SQL statement, even after the final page.</summary>
+        /// <returns>The server response, or <see langword="null"/> if the job is closed or no close is needed.</returns>
+        public String? Close()
         {
+            string? cursorId;
             lock (GlobalQueryList)
             {
                 _isClosed = true;
                 RemoveFromGlobalQueryList();
-            }
-            if (CorrelationId is not null && State != QueryState.RUN_DONE)
-            {
                 State = QueryState.RUN_DONE;
-                CloseRequest closeRequest = new(SqlJob.GetNewUniqueId("sqlclose"),
-                    CorrelationId, "sqlclose");
-
-                string requestString = JsonSerializer.Serialize(closeRequest);
-
-                if (Job is null)
+                cursorId = CorrelationId;
+                if (_sqlCloseRequested || IsCLCommand || cursorId is null)
                 {
-                    throw new Exception("Job is null");
+                    return null;
                 }
-                string result = Job.Send(requestString);
-                return result;
 
+                _sqlCloseRequested = true;
             }
-            else if (CorrelationId is null)
+
+            CloseRequest closeRequest = new(SqlJob.GetNewUniqueId("sqlclose"), cursorId, "sqlclose");
+            if (Job is null)
             {
-                State = QueryState.RUN_DONE;
-                return null;
+                throw new Exception("Job is null");
             }
-            else
+
+            try
             {
+                return Job.Send(JsonSerializer.Serialize(closeRequest));
+            }
+            catch (ObjectDisposedException error) when (error.ObjectName == nameof(SqlJob))
+            {
+                // Closing the job ends the session and releases its statements.
                 return null;
             }
         }

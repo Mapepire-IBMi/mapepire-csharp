@@ -8,6 +8,7 @@ namespace UnitTests;
 
 /// <summary>Offline regression coverage for the process-wide query registry.</summary>
 [TestClass]
+[TestCategory("Offline")]
 [DoNotParallelize]
 public sealed class QueryCleanupTests
 {
@@ -42,7 +43,7 @@ public sealed class QueryCleanupTests
         Assert.IsFalse(IsRegistered(query));
     }
 
-    /// <summary>Verifies that each execution mode unregisters a completed query.</summary>
+    /// <summary>Verifies that each execution mode unregisters and can explicitly close a completed query.</summary>
     /// <param name="terse">Whether to request terse rows.</param>
     /// <param name="prepared">Whether to use a prepared statement.</param>
     [TestMethod]
@@ -61,7 +62,7 @@ public sealed class QueryCleanupTests
         Assert.AreEqual(prepared ? "prepare_sql_execute" : "sql", ReadRequest(socket).GetProperty("type").GetString());
         Assert.IsFalse(IsRegistered(query));
         Assert.IsNull(Query.ById(result.Id));
-        Assert.IsNull(query.Close());
+        await AssertStatementClosesOnceAsync(socket, query, result.Id);
     }
 
     /// <summary>Verifies that the original continuation ID remains usable until the last page.</summary>
@@ -86,6 +87,7 @@ public sealed class QueryCleanupTests
         Assert.AreEqual(first.Id, ReadRequest(socket).GetProperty("cont_id").GetString());
         Assert.IsFalse(IsRegistered(query));
         Assert.IsNull(Query.ById(first.Id));
+        await AssertStatementClosesOnceAsync(socket, query, first.Id);
     }
 
     /// <summary>Checks that an SQL error unregisters the query even when the server omits the completion flag.</summary>
@@ -349,17 +351,22 @@ public sealed class QueryCleanupTests
         SqlJob job = NewJob(out ScriptedWebSocket socket);
         Query query = NewQuery(job);
         QueryResult first = await ReplyAsync(socket, query.Execute, done: false);
-        Task<string> closing = Task.Run(query.Close);
-        await socket.WaitForSendCountAsync(2);
-        JsonElement request = ReadRequest(socket);
-        Assert.AreEqual("sqlclose", request.GetProperty("type").GetString());
-        Assert.AreEqual(first.Id, request.GetProperty("cont_id").GetString());
-        socket.EnqueueText(JsonSerializer.Serialize(new { id = request.GetProperty("id").GetString(), success = true }));
-        await closing.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.IsNull(query.Close());
-        Assert.AreEqual(2, socket.SentMessages.Count);
+        await AssertStatementClosesOnceAsync(socket, query, first.Id);
         Assert.IsFalse(IsRegistered(query));
+    }
+
+    /// <summary>Checks that closing a completed query is harmless after its job has closed.</summary>
+    [TestMethod]
+    public async Task ClosingCompletedQueryAfterJobCloseSendsNothingAsync()
+    {
+        SqlJob job = NewJob(out ScriptedWebSocket socket);
+        Query query = NewQuery(job);
+        await ReplyAsync(socket, query.Execute, done: true);
+        job.Close();
+
+        Assert.IsNull(await Task.Run(query.Close).WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.AreEqual(1, socket.SentMessages.Count);
     }
 
     /// <summary>Verifies that cleanup removes terminal entries and preserves queries that have not finished.</summary>
@@ -487,6 +494,34 @@ public sealed class QueryCleanupTests
     {
         using JsonDocument document = JsonDocument.Parse(socket.SentMessages.Last());
         return document.RootElement.Clone();
+    }
+
+    /// <summary>Checks the close request, its reply, and duplicate closes before and after the reply.</summary>
+    /// <param name="socket">The socket that captures requests and supplies replies.</param>
+    /// <param name="query">The SQL query to close.</param>
+    /// <param name="cursorId">The ID of the original SQL execution request.</param>
+    private static async Task AssertStatementClosesOnceAsync(ScriptedWebSocket socket, Query query, string? cursorId)
+    {
+        int expectedCount = socket.SentMessages.Count + 1;
+        Task sent = socket.WaitForSendCountAsync(expectedCount);
+        Task<string?> closing = Task.Run(query.Close);
+        Assert.AreSame(sent, await Task.WhenAny(sent, closing), "The first close should send a request and wait for its reply.");
+        await sent;
+
+        JsonElement request = ReadRequest(socket);
+        Assert.AreEqual("sqlclose", request.GetProperty("type").GetString());
+        Assert.IsNotNull(cursorId);
+        Assert.AreEqual(cursorId, request.GetProperty("cont_id").GetString());
+        string? id = request.GetProperty("id").GetString();
+        Assert.IsFalse(string.IsNullOrEmpty(id));
+        Assert.AreNotEqual(cursorId, id);
+        Assert.IsNull(await Task.Run(query.Close).WaitAsync(TimeSpan.FromSeconds(5)));
+
+        string reply = JsonSerializer.Serialize(new { id, success = true });
+        socket.EnqueueText(reply);
+        Assert.AreEqual(reply, await closing.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.IsNull(query.Close());
+        Assert.AreEqual(expectedCount, socket.SentMessages.Count);
     }
 
     /// <summary>Supplies a matching scripted reply after the operation sends its request.</summary>

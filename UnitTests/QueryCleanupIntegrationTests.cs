@@ -60,7 +60,7 @@ public sealed class QueryCleanupIntegrationTests
         }
     }
 
-    /// <summary>Verifies that repeated queries complete and unregister with each combination of execution options.</summary>
+    /// <summary>Verifies that completed queries unregister and their handles can be closed on the server.</summary>
     /// <param name="terse">Whether to request terse rows.</param>
     /// <param name="prepared">Whether to use a prepared statement.</param>
     [TestMethod]
@@ -83,6 +83,7 @@ public sealed class QueryCleanupIntegrationTests
             Assert.AreEqual(value, ((JsonElement)result.Data[0].Values.Single()).GetInt32());
             AssertNotTracked(query);
             Assert.IsNull(Query.ById(result.Id));
+            AssertServerAcceptedClose(query);
         }
     }
 
@@ -111,6 +112,7 @@ public sealed class QueryCleanupIntegrationTests
         CollectionAssert.AreEqual(new[] { 1, 2, 3 }, values);
         AssertNotTracked(query);
         Assert.IsNull(Query.ById(cursorId));
+        AssertServerAcceptedClose(query);
     }
 
     /// <summary>Checks that closing a live cursor succeeds and unregisters it.</summary>
@@ -122,13 +124,9 @@ public sealed class QueryCleanupIntegrationTests
         Assert.IsFalse(result.IsDone);
         Assert.AreSame(query, Query.ById(result.Id));
 
-        string response = query.Close();
-        Assert.IsNotNull(response);
-        using JsonDocument close = JsonDocument.Parse(response);
-        Assert.IsTrue(close.RootElement.GetProperty("success").GetBoolean());
+        AssertServerAcceptedClose(query);
         AssertNotTracked(query);
         Assert.IsNull(Query.ById(result.Id));
-        Assert.IsNull(query.Close());
     }
 
     /// <summary>Verifies that a syntax error from IBM i unregisters the query.</summary>
@@ -140,6 +138,17 @@ public sealed class QueryCleanupIntegrationTests
         Assert.ThrowsException<SqlException>(() => query.Execute());
 
         AssertNotTracked(query);
+    }
+
+    /// <summary>Checks that the server accepted the first close and that a repeated close is local.</summary>
+    /// <param name="query">The SQL query with a server statement to close.</param>
+    private static void AssertServerAcceptedClose(Query query)
+    {
+        string? response = query.Close();
+        Assert.IsNotNull(response, "Expected a sqlclose response from the server.");
+        using JsonDocument close = JsonDocument.Parse(response);
+        Assert.IsTrue(close.RootElement.GetProperty("success").GetBoolean());
+        Assert.IsNull(query.Close());
     }
 
     /// <summary>Creates a live query and tracks it for test cleanup.</summary>
