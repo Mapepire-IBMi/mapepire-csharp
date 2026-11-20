@@ -124,37 +124,45 @@ namespace io.github.mapepire_ibmi
             return true;
         }
 
-public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateValidationCallback(X509Certificate2Collection trustedRoots)
-{    
-    return (sender, certificate, chain, policyErrors) =>
-    {
-        // Missing cert or the destination hostname wasn't valid for the cert.
-        if ((policyErrors & ~SslPolicyErrors.RemoteCertificateChainErrors) != 0)
+        /// <summary>
+        /// Creates a validation callback that uses the platform trust store when no custom roots are supplied.
+        /// </summary>
+        /// <param name="trustedRoots">The roots to trust in place of the platform trust store.</param>
+        /// <returns>A callback that validates the server certificate chain and hostname.</returns>
+        public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateValidationCallback(X509Certificate2Collection? trustedRoots)
         {
-            return false;
-        }
+            return (sender, certificate, chain, policyErrors) =>
+            {
+                if (certificate is not X509Certificate2 serverCertificate
+                    || (policyErrors & ~SslPolicyErrors.RemoteCertificateChainErrors) != SslPolicyErrors.None)
+                {
+                    return false;
+                }
 
-        X509Certificate2Collection roots;
-        if (trustedRoots != null && trustedRoots.Count > 0) {
-            roots = trustedRoots;
-        }
-        // If trustedRoots is null or empty, add the certificate in the validation callback to the trust roots.
-        else {
-            roots = new X509Certificate2Collection((X509Certificate2)certificate);
-        }
+                if (trustedRoots is null || trustedRoots.Count == 0)
+                {
+                    return policyErrors == SslPolicyErrors.None;
+                }
 
-        for (int i = 1; i < chain.ChainElements.Count; i++)
-        {
-            chain.ChainPolicy.ExtraStore.Add(chain.ChainElements[i].Certificate);
-        }
+                if (chain is null)
+                {
+                    return false;
+                }
 
-       
-        chain.ChainPolicy.CustomTrustStore.Clear();
-        chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-        chain.ChainPolicy.CustomTrustStore.AddRange(roots);
-        return chain.Build((X509Certificate2)certificate);
-    };
-}
+                using X509Chain customChain = new();
+                customChain.ChainPolicy = chain.ChainPolicy.Clone();
+                customChain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                customChain.ChainPolicy.CustomTrustStore.Clear();
+                customChain.ChainPolicy.CustomTrustStore.AddRange(trustedRoots);
+
+                for (int i = 1; i < chain.ChainElements.Count; i++)
+                {
+                    customChain.ChainPolicy.ExtraStore.Add(chain.ChainElements[i].Certificate);
+                }
+
+                return customChain.Build(serverCertificate);
+            };
+        }
         /**
          * Get a WebSocketClient instance which can be used to connect to the specified
          * DB2 server.
