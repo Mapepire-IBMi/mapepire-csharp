@@ -74,15 +74,15 @@ as test values that exercise Unicode columns.
 
 | Project | Target framework |
 | --- | --- |
-| `io` (the SDK, assembly `mapepire`) | `net8.0` |
-| `Mapepire.Data` | `net8.0` |
-| `Mapepire.EntityFrameworkCore` | `net8.0` |
-| `UnitTests` | `net9.0` |
-| `Mapepire.EntityFrameworkCore.Tests` | `net9.0` |
+| `io` (the SDK, assembly `mapepire`) | `net10.0` |
+| `Mapepire.Data` | `net10.0` |
+| `Mapepire.EntityFrameworkCore` | `net10.0` |
+| `UnitTests` | `net10.0` |
+| `Mapepire.EntityFrameworkCore.Tests` | `net10.0` |
 
-CI builds with the .NET 9 SDK.
+CI builds with the .NET 10 SDK.
 
-- **Library code must compile and run on `net8.0`.** Do not use APIs that first shipped in a later
+- **Library code must compile and run on `net10.0`.** Do not use APIs that first shipped in a later
   runtime. The compiler catches most of these, but not all: some APIs exist in a newer reference set and
   fail only at runtime on the target framework.
 - Do not change a project's `TargetFramework` (or add a target) as part of an unrelated change. That is
@@ -736,7 +736,7 @@ Before completing any C# edit in this repository, verify all of the following:
 - [ ] Indentation is **4 spaces**; the lines you wrote or changed contain no tab characters.
 - [ ] No line exceeds **320 characters** without good reason.
 - [ ] No generated file was hand-edited (§1.4).
-- [ ] Library code still targets and runs on `net8.0`; no `TargetFramework` was changed as a side
+- [ ] Library code still targets and runs on `net10.0`; no `TargetFramework` was changed as a side
       effect (§1.3).
 
 **Naming**

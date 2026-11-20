@@ -10,16 +10,11 @@ public class MapepireParameterBasedSqlProcessor(
     : RelationalParameterBasedSqlProcessor(dependencies, parameters)
 {
     /// <inheritdoc />
-    public override Expression Optimize(
-        Expression queryExpression,
-        IReadOnlyDictionary<string, object?> parametersValues,
-        out bool canCache)
+    public override Expression Process(Expression queryExpression, ParametersCacheDecorator parametersDecorator)
     {
-        var optimized = base.Optimize(queryExpression, parametersValues, out canCache);
-
-        optimized = new LimitOffsetInliningExpressionVisitor(Dependencies.SqlExpressionFactory, parametersValues)
-            .Process(optimized, out var canCacheLimits);
-        canCache &= canCacheLimits;
+        var optimized = base.Process(queryExpression, parametersDecorator);
+        optimized = new LimitOffsetInliningExpressionVisitor(Dependencies.SqlExpressionFactory, parametersDecorator)
+            .Visit(optimized);
 
         return new MapepireSearchConditionConvertingExpressionVisitor(Dependencies.SqlExpressionFactory).Visit(optimized);
     }
@@ -40,21 +35,8 @@ public class MapepireParameterBasedSqlProcessorFactory(RelationalParameterBasedS
 /// </summary>
 internal sealed class LimitOffsetInliningExpressionVisitor(
     ISqlExpressionFactory sqlExpressionFactory,
-    IReadOnlyDictionary<string, object?> parameterValues) : ExpressionVisitor
+    ParametersCacheDecorator parametersDecorator) : ExpressionVisitor
 {
-    private bool _canCache = true;
-
-    /// <summary>Rewrites every SELECT in the query.</summary>
-    /// <param name="expression">The query.</param>
-    /// <param name="canCache">False if any value was inlined, because the SQL then depends on parameter values.</param>
-    /// <returns>The rewritten query.</returns>
-    public Expression Process(Expression expression, out bool canCache)
-    {
-        var result = Visit(expression);
-        canCache = _canCache;
-        return result;
-    }
-
     /// <summary>Inlines the OFFSET and FETCH values of a SELECT, after rewriting its nested SELECTs.</summary>
     protected override Expression VisitExtension(Expression node)
     {
@@ -104,10 +86,9 @@ internal sealed class LimitOffsetInliningExpressionVisitor(
     private SqlExpression? Inline(SqlExpression? expression)
     {
         if (expression is SqlParameterExpression parameter
-            && parameterValues.TryGetValue(parameter.Name, out var value)
+            && parametersDecorator.GetAndDisableCaching().TryGetValue(parameter.Name, out var value)
             && value is int or long)
         {
-            _canCache = false;
             return sqlExpressionFactory.Constant(Convert.ToInt32(value), parameter.TypeMapping);
         }
 

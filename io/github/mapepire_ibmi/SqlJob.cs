@@ -178,7 +178,7 @@ public static RemoteCertificateValidationCallback CreateCustomRemoteCertificateV
             } else {
                 if (db2Server.Ca != null) { 
                     byte[] customRootCertificateData = Convert.FromBase64String(db2Server.Ca);
-                    X509Certificate2 customRootCertificate = new X509Certificate2(customRootCertificateData);
+                    X509Certificate2 customRootCertificate = X509CertificateLoader.LoadCertificate(customRootCertificateData);
                     X509Certificate2Collection customRootCertificates = new X509Certificate2Collection(customRootCertificate);
                     ws.Options.RemoteCertificateValidationCallback = CreateCustomRemoteCertificateValidationCallback(customRootCertificates);
 
