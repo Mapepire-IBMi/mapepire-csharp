@@ -81,8 +81,10 @@ Parameters can be named (`@id`) or positional (`?`). Named markers are rewritten
 
 ### Transactions
 
-* `Auto Commit=false`: real transactions. `BeginTransaction()` starts a unit of work that ends with COMMIT or ROLLBACK, and EF Core's `SaveChanges` is atomic. Outside an explicit transaction, each command is committed when it completes. **The tables involved must be journaled**; tables created in a schema made with `CREATE SCHEMA` are journaled automatically.
-* `Auto Commit=true` (default, the same as JDBC): every statement is committed as it runs, so this also works on libraries that are not journaled. `BeginTransaction()` still succeeds so that EF Core works, but `Commit()` does nothing and `Rollback()` throws. A failing `SaveChanges` can leave earlier rows saved.
+* `Auto Commit=false`: use this for normal EF Core operation and migrations. `BeginTransaction()` starts a unit of work that ends with COMMIT or ROLLBACK. EF Core's default `SaveChanges` behavior uses a transaction where needed. Outside an explicit transaction, each command is committed when it completes. **The tables involved must be journaled**. Tables created in a schema made with `CREATE SCHEMA` are journaled automatically.
+* `Auto Commit=true` (the ADO.NET default): individual statements are committed as they run and can work with tables that are not journaled. `BeginTransaction()` throws before it sends SQL, so EF Core rejects a save that requires a transaction before writing its statements.
+
+For a deliberately non-atomic EF Core save, use `Auto Commit=true` and set `context.Database.AutoTransactionBehavior = AutoTransactionBehavior.Never` before calling `SaveChanges`. If a later statement fails, earlier writes may already be committed. This setting applies to automatic transactions for saves. Use `Auto Commit=false` for migrations.
 
 ### Mapping and SQL notes
 

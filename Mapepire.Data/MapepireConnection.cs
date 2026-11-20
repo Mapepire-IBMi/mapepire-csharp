@@ -140,7 +140,7 @@ public sealed class MapepireConnection : DbConnection
             {
                 try
                 {
-                    EndTransaction(Transaction, commit: false, disposing: true);
+                    EndTransaction(Transaction, commit: false);
                 }
                 catch
                 {
@@ -185,10 +185,11 @@ public sealed class MapepireConnection : DbConnection
     }
 
     /// <summary>
-    /// Starts a transaction. With <c>Auto Commit=false</c> this is a real unit of work ended by COMMIT or
-    /// ROLLBACK. In auto-commit mode (the default) statements are committed as they run: <c>Commit()</c> does
-    /// nothing and <c>Rollback()</c> throws.
+    /// Starts a unit of work ended by COMMIT or ROLLBACK. Requires <c>Auto Commit=false</c> and journaled tables.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The connection is closed, a transaction is already active, or auto-commit is enabled.
+    /// </exception>
     public new MapepireTransaction BeginTransaction() => (MapepireTransaction)BeginDbTransaction(IsolationLevel.Unspecified);
 
     /// <inheritdoc cref="BeginTransaction()" />
@@ -216,31 +217,12 @@ public sealed class MapepireConnection : DbConnection
     /// <summary>Ends the active transaction with COMMIT or ROLLBACK.</summary>
     /// <param name="transaction">The transaction to end; it must be the active one.</param>
     /// <param name="commit">True to commit, false to roll back.</param>
-    /// <param name="disposing">
-    /// True when called from <c>Dispose</c> or <c>Close</c>; in auto-commit mode the implicit rollback is then not an error.
-    /// </param>
-    /// <exception cref="InvalidOperationException">
-    /// The transaction is not the active one, or an explicit rollback was requested in auto-commit mode.
-    /// </exception>
-    internal void EndTransaction(MapepireTransaction transaction, bool commit, bool disposing = false)
+    /// <exception cref="InvalidOperationException">The transaction is not the active one.</exception>
+    internal void EndTransaction(MapepireTransaction transaction, bool commit)
     {
         if (!ReferenceEquals(Transaction, transaction))
         {
             throw new InvalidOperationException("The transaction has already completed.");
-        }
-
-        if (transaction.IsAutoCommit)
-        {
-            Transaction = null;
-            if (!commit && !disposing)
-            {
-                throw new InvalidOperationException(
-                    "Cannot roll back: the connection is in auto-commit mode, so every statement has already been committed. "
-                    + "Use 'Auto Commit=false' in the connection string for transactions that can be rolled back "
-                    + "(the tables involved must be journaled).");
-            }
-
-            return;
         }
 
         try
@@ -286,10 +268,9 @@ public sealed class MapepireConnection : DbConnection
 
         if (_settings.AutoCommit)
         {
-            // Like JDBC in auto-commit mode: every statement is committed as it runs, so the transaction
-            // object only delimits the work. Commit is a no-op; an explicit Rollback throws.
-            Transaction = new MapepireTransaction(this, isolationLevel, isAutoCommit: true);
-            return Transaction;
+            throw new InvalidOperationException(
+                "Cannot begin a transaction with auto-commit enabled. "
+                + "Set 'Auto Commit=false' in the connection string and use journaled tables.");
         }
 
         var level = isolationLevel switch
