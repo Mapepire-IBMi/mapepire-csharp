@@ -7,7 +7,7 @@ namespace UnitTests;
 
 [TestClass]
 [TestCategory("Offline")]
-public sealed class CertificateValidationTests
+public sealed class CertificateTrustTests
 {
     /// <summary>
     /// Rejects a peer certificate that is untrusted by the platform when no roots were configured.
@@ -34,9 +34,24 @@ public sealed class CertificateValidationTests
     public void PlatformValidationIsAcceptedWithoutConfiguredRoots()
     {
         using X509Certificate2 certificate = CreateSelfSignedCertificate("CN=localhost");
+        using X509Chain chain = new();
         RemoteCertificateValidationCallback validate = SqlJob.CreateCustomRemoteCertificateValidationCallback(new());
 
-        Assert.IsTrue(validate(this, certificate, null, SslPolicyErrors.None));
+        Assert.IsTrue(validate(this, certificate, chain, SslPolicyErrors.None));
+    }
+
+    /// <summary>
+    /// Rejects an incomplete platform validation result.
+    /// </summary>
+    [TestMethod]
+    public void MissingCertificateOrChainIsRejected()
+    {
+        using X509Certificate2 certificate = CreateSelfSignedCertificate("CN=localhost");
+        using X509Chain chain = new();
+        RemoteCertificateValidationCallback validate = SqlJob.CreateCustomRemoteCertificateValidationCallback(new());
+
+        Assert.IsFalse(validate(this, null, chain, SslPolicyErrors.None));
+        Assert.IsFalse(validate(this, certificate, null, SslPolicyErrors.None));
     }
 
     /// <summary>

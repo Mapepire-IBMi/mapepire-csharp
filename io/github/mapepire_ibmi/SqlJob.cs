@@ -133,7 +133,7 @@ namespace io.github.mapepire_ibmi
         {
             return (sender, certificate, chain, policyErrors) =>
             {
-                if (certificate is not X509Certificate2 serverCertificate
+                if (certificate is not X509Certificate2 serverCertificate || chain is null
                     || (policyErrors & ~SslPolicyErrors.RemoteCertificateChainErrors) != SslPolicyErrors.None)
                 {
                     return false;
@@ -142,11 +142,6 @@ namespace io.github.mapepire_ibmi
                 if (trustedRoots is null || trustedRoots.Count == 0)
                 {
                     return policyErrors == SslPolicyErrors.None;
-                }
-
-                if (chain is null)
-                {
-                    return false;
                 }
 
                 using X509Chain customChain = new();
