@@ -7,6 +7,7 @@ using io.github.mapepire_ibmi;
 namespace UnitTests;
 
 [TestClass]
+[TestCategory("Offline")]
 public sealed class ResponseCorrelationTests
 {
     [TestMethod]

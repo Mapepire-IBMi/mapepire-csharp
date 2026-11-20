@@ -81,6 +81,7 @@ public sealed class PendingTransactionsTests
     }
 
     [TestMethod]
+    [TestCategory("Offline")]
     public void GetPendingTransactionsDoesNotRetainInternalQueryWhenExecutionFails()
     {
         SqlJob sqlJob = new();

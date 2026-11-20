@@ -5,6 +5,7 @@ using io.github.mapepire_ibmi.types.jdbcOptions;
 namespace UnitTests;
 
 [TestClass]
+[TestCategory("Offline")]
 public sealed class SqlJobTests
 {
     [TestMethod]

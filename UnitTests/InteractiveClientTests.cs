@@ -5,6 +5,7 @@ using io.github.mapepire_ibmi.types;
 namespace UnitTests;
 
 [TestClass]
+[TestCategory("Offline")]
 public sealed class InteractiveClientTests
 {
     [TestMethod]
