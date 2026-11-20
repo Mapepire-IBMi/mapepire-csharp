@@ -660,6 +660,21 @@ public class MapepireSearchConditionConvertingExpressionVisitor : SqlExpressionV
         return leftJoinExpression.Update(table, joinPredicate);
     }
 
+    /// <summary>Visits a right join's ON predicate in a search-condition context.</summary>
+    /// <param name="rightJoinExpression">The right join to translate.</param>
+    /// <returns>The right join with its converted table and predicate.</returns>
+    protected override Expression VisitRightJoin(RightJoinExpression rightJoinExpression)
+    {
+        var parentSearchCondition = _isSearchCondition;
+        _isSearchCondition = false;
+        var table = (TableExpressionBase)Visit(rightJoinExpression.Table);
+        _isSearchCondition = true;
+        var joinPredicate = (SqlExpression)Visit(rightJoinExpression.JoinPredicate);
+        _isSearchCondition = parentSearchCondition;
+
+        return rightJoinExpression.Update(table, joinPredicate);
+    }
+
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in

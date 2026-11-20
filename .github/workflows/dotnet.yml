@@ -22,7 +22,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 9.0.x
+        dotnet-version: 10.0.x
     # The provider tests run against the Mapepire mock server, a Java program the test build downloads.
     - name: Setup Java
       uses: actions/setup-java@v4

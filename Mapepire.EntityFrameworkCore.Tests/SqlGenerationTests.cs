@@ -40,6 +40,17 @@ public sealed class SqlGenerationTests
         StringAssert.Contains(sql, "OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY");
     }
 
+    /// <summary>Checks that SQL with a paging literal is regenerated for a different count.</summary>
+    [TestMethod]
+    public void TakeUsesTheCurrentParameterValue()
+    {
+        using var context = BloggingContext.CreateOffline();
+        IQueryable<Blog> Query(int take) => context.Blogs.OrderBy(blog => blog.Id).Take(take);
+
+        StringAssert.Contains(Query(2).ToQueryString(), "FETCH FIRST 2 ROWS ONLY");
+        StringAssert.Contains(Query(5).ToQueryString(), "FETCH FIRST 5 ROWS ONLY");
+    }
+
     [TestMethod]
     public void TakeOnlyUsesFetchFirst()
     {
@@ -161,6 +172,16 @@ public sealed class SqlGenerationTests
     {
         var sql = Sql(c => c.Blogs.Include(b => b.Posts));
         StringAssert.Contains(sql, "LEFT JOIN \"Posts\"");
+    }
+
+    /// <summary>Checks the EF Core 10 right-join expression produces a Db2 join predicate.</summary>
+    [TestMethod]
+    public void RightJoinGeneratesJoinPredicate()
+    {
+        var sql = Sql(c => c.Blogs.RightJoin(c.Posts, blog => blog.Id, post => post.BlogId,
+            (blog, post) => new { BlogName = blog == null ? null : blog.Name, post.Title }));
+        StringAssert.Contains(sql, "RIGHT JOIN \"Posts\"");
+        StringAssert.Contains(sql, "ON \"b\".\"Id\" = \"p\".\"BlogId\"");
     }
 
     private static string Sql(Func<BloggingContext, IQueryable> query)

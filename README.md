@@ -10,6 +10,9 @@ Mapepire client SDK for C#
 
 ### Requirements
 
+- The SDK and interactive client require a supported .NET 10 runtime. Install the .NET 10 SDK to build the repository or run the tests.
+- Mapepire follows [Microsoft's .NET support lifecycle](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core) for its supported runtime versions. .NET 10 LTS is the current baseline.
+
 ### Server Component Setup
 
 In order for applications to use Db2 for i through this C# client SDK, the `mapepire-server` daemon must be installed and started-up on each IBM i. Follow the instructions [here](https://mapepire-ibmi.github.io/guides/sysadmin/) to learn about the installation and startup process of the server component.
@@ -24,7 +27,7 @@ Note:  The C# SDK uses the JSON serialization facilities provided by System.Text
 
 ## Entity Framework Core provider
 
-The repository also contains an ADO.NET provider and an Entity Framework Core (EF Core 9) provider built on the SDK:
+The repository also contains an ADO.NET provider and an Entity Framework Core (EF Core 10) provider built on the SDK:
 
 | Project | Description |
 | --- | --- |
