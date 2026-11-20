@@ -219,13 +219,14 @@ public sealed class LiveServerTests
         }
     }
 
-    /// <summary>Client-generated Guid keys work, and multi-row saves succeed in auto-commit mode.</summary>
+    /// <summary>Client-generated Guid keys work when the caller explicitly disables automatic transactions.</summary>
     [TestMethod]
     public void GuidKeysAndAutoCommitMode()
     {
         var id = Guid.NewGuid();
         using (var context = Context(autoCommit: true))
         {
+            context.Database.AutoTransactionBehavior = AutoTransactionBehavior.Never;
             context.Add(new Tag { Id = id, Label = "auto" });
             context.Add(new Tag { Id = Guid.NewGuid(), Label = "commit" });
             context.SaveChanges();
@@ -235,6 +236,37 @@ public sealed class LiveServerTests
         {
             Assert.AreEqual("auto", context.Tags.Single(t => t.Id == id).Label);
         }
+    }
+
+    /// <summary>Proves that the explicit non-atomic mode can commit a parent before its dependent insert fails.</summary>
+    [TestMethod]
+    public void NonAtomicSaveCanCommitEarlierStatements()
+    {
+        const string blogName = "Non-atomic parent";
+        const string postTitle = "Rejected dependent";
+        using (var setup = Context())
+        {
+            setup.Database.ExecuteSqlRaw("""
+                ALTER TABLE "Posts" ADD CONSTRAINT EF_TEST_POST_VERSION CHECK ("Version" >= 0)
+                """);
+        }
+
+        using (var context = Context(autoCommit: true))
+        {
+            context.Database.AutoTransactionBehavior = AutoTransactionBehavior.Never;
+            context.Add(new Blog
+            {
+                Name = blogName,
+                CreatedAt = DateTime.Now,
+                Posts = [new Post { Title = postTitle, Version = -1 }],
+            });
+
+            Assert.ThrowsException<DbUpdateException>(() => context.SaveChanges());
+        }
+
+        using var verify = Context();
+        Assert.IsTrue(verify.Blogs.Any(blog => blog.Name == blogName), "The earlier parent insert should be committed.");
+        Assert.IsFalse(verify.Posts.Any(post => post.Title == postTitle), "The failed dependent insert should be absent.");
     }
 
     /// <summary>The ADO.NET reader fetches a result larger than the fetch size across several round trips, in order.</summary>
